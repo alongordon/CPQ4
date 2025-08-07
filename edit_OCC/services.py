@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from OCC.Core.BinXCAFDrivers import BinXCAFDrivers
+from OCC.Core.BinXCAFDrivers import binxcafdrivers_DefineFormat
 from OCC.Core.IFSelect import IFSelect_RetDone
 from OCC.Core.STEPCAFControl import STEPCAFControl_Reader
 from OCC.Core.XCAFApp import XCAFApp_Application
@@ -26,7 +26,7 @@ def build_ocaf_document(step_path: str | Path, ocaf_path: str | Path) -> None:
     ocaf_path = Path(ocaf_path)
 
     app = XCAFApp_Application.GetApplication()
-    BinXCAFDrivers.DefineFormat(app)
+    binxcafdrivers_DefineFormat(app)
 
     # Create the document handle using the newer API which directly returns it
     doc = app.NewDocument("BinXCAF")
