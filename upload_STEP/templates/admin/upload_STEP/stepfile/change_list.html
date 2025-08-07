@@ -1,0 +1,50 @@
+{% extends "admin/change_list.html" %}
+{% load admin_urls %}
+
+{% block object-tools %}
+  {% if has_add_permission %}
+    <ul class="object-tools">
+      <li>
+        <a href="{% url cl.opts|admin_urlname:'add' %}" class="addlink">Add {{ cl.opts.verbose_name }}</a>
+      </li>
+      <li>
+        <a href="#" class="button" id="build-occ">Build OCC file</a>
+      </li>
+    </ul>
+  {% endif %}
+{% endblock %}
+
+{% block extrahead %}
+  {{ block.super }}
+  <style>
+    ul.object-tools {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    ul.object-tools li {
+      margin-bottom: 5px;
+    }
+  </style>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const button = document.getElementById('build-occ');
+      if (!button) return;
+      button.addEventListener('click', function(event) {
+        event.preventDefault();
+        const selected = document.querySelectorAll('input.action-select:checked');
+        if (selected.length !== 1) {
+          alert('Please select exactly one STEP file to build an OCC file.');
+          return;
+        }
+        const row = selected[0].closest('tr');
+        const fileLink = row.querySelector('td.field-file a');
+        const fileName = fileLink ? fileLink.textContent.trim() : 'the selected file';
+        const message = `Are you sure you would like to use ${fileName} to generate a new OCC file?`;
+        if (confirm(message)) {
+          // Future functionality will be implemented later.
+        }
+      });
+    });
+  </script>
+{% endblock %}
