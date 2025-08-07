@@ -42,7 +42,10 @@
         const fileName = fileLink ? fileLink.textContent.trim() : 'the selected file';
         const message = `Are you sure you would like to use ${fileName} to generate a new OCC file?`;
         if (confirm(message)) {
-          // Future functionality will be implemented later.
+          const form = document.getElementById('changelist-form');
+          const actionSelect = document.querySelector('select[name="action"]');
+          actionSelect.value = 'build_occ_document_action';
+          form.submit();
         }
       });
     });
