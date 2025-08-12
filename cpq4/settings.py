@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "upload_FCStd",
     "edit_OCC",
+    "shapes",
 ]
 
 MIDDLEWARE = [

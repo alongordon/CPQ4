@@ -1,3 +1,10 @@
 from django.contrib import admin
 
-# Register your models here.
+from .models import OccDocument
+
+
+@admin.register(OccDocument)
+class OccDocumentAdmin(admin.ModelAdmin):
+    """Admin representation of :class:`~edit_OCC.models.OccDocument`."""
+    
+    list_display = ("id", "fcstd_file", "file", "created_at")
