@@ -156,6 +156,174 @@ class ShapeAsset(models.Model):
             position=position
         )
     
+    def _wire_from_shape_relaxed(self, shape):
+        """
+        Extract a usable closed wire from a shape, handling various topology structures.
+        This is more robust than simple wire extraction for shapes from different CAD systems.
+        """
+        from OCC.Core.TopAbs import TopAbs_FACE, TopAbs_EDGE, TopAbs_WIRE
+        from OCC.Core.TopoDS import topods_Face, topods_Wire, topods_Edge
+        from OCC.Core.TopExp import TopExp_Explorer
+        from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeWire, BRepBuilderAPI_MakeFace
+        from OCC.Core.BRepAdaptor import BRepAdaptor_Curve
+        from OCC.Core.BRepCheck import BRepCheck_Analyzer
+        
+        print(f"  Wire extraction: Input shape type: {type(shape)}")
+        
+        # 1) try wires directly
+        print("  Wire extraction: Step 1 - Looking for wires directly...")
+        expw = TopExp_Explorer(shape, TopAbs_WIRE)
+        if expw.More():
+            wire = topods_Wire(expw.Current())
+            print(f"  Wire extraction: Found wire directly, type: {type(wire)}")
+            return wire
+
+        # 2) try face outer boundary
+        print("  Wire extraction: Step 2 - Looking for faces...")
+        expf = TopExp_Explorer(shape, TopAbs_FACE)
+        if expf.More():
+            f = topods_Face(expf.Current())
+            print(f"  Wire extraction: Found face, type: {type(f)}")
+            # Rebuild the outer wire via MakeFace->Wire extraction (avoids version diffs)
+            tmp = BRepBuilderAPI_MakeFace(f).Face()
+            wexp = TopExp_Explorer(tmp, TopAbs_WIRE)
+            if wexp.More():
+                wire = topods_Wire(wexp.Current())
+                print(f"  Wire extraction: Extracted wire from face, type: {type(wire)}")
+                return wire
+
+        # 3) single periodic edge -> make a face then re-extract wire
+        print("  Wire extraction: Step 3 - Looking for edges...")
+        edges = []
+        expe = TopExp_Explorer(shape, TopAbs_EDGE)
+        while expe.More():
+            edges.append(topods_Edge(expe.Current()))
+            expe.Next()
+        print(f"  Wire extraction: Found {len(edges)} edges")
+        
+        if len(edges) == 1:
+            print("  Wire extraction: Single edge found, checking if periodic...")
+            ba = BRepAdaptor_Curve(edges[0])
+            is_periodic = ba.IsPeriodic()
+            print(f"  Wire extraction: Edge is periodic: {is_periodic}")
+            
+            if is_periodic:
+                # either wrap edge in a wire...
+                w = BRepBuilderAPI_MakeWire(edges[0]).Wire()
+                print(f"  Wire extraction: Created wire from periodic edge, type: {type(w)}")
+                # ...or more robust: make a planar face and re-extract boundary
+                ftry = BRepBuilderAPI_MakeFace(w).Face()
+                face_valid = BRepCheck_Analyzer(ftry, True).IsValid()
+                print(f"  Wire extraction: Face from periodic edge valid: {face_valid}")
+                
+                if face_valid:
+                    wexp = TopExp_Explorer(ftry, TopAbs_WIRE)
+                    if wexp.More():
+                        wire = topods_Wire(wexp.Current())
+                        print(f"  Wire extraction: Extracted wire from periodic edge face, type: {type(wire)}")
+                        return wire
+                return w  # fallback
+
+        print("  Wire extraction: No usable closed boundary found")
+        raise ValueError("No usable closed boundary found")
+
+    def canonicalize_wire_orientation(self, brep_path):
+        """
+        Canonicalize the wire orientation to CCW/FORWARD (orientation 0) and validate closure.
+        This ensures all shapes are stored in a consistent format and are properly closed.
+        """
+        try:
+            from OCC.Core.BRep import BRep_Builder
+            from OCC.Core.BRepTools import breptools, breptools_Write
+            from OCC.Core.TopoDS import TopoDS_Shape, TopoDS_Wire
+            from OCC.Core.TopAbs import TopAbs_WIRE
+            from OCC.Core.TopExp import TopExp_Explorer
+            from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeFace
+            from OCC.Core.BRepCheck import BRepCheck_Analyzer, BRepCheck_Wire, BRepCheck_NoError
+            
+            print(f"=== WIRE VALIDATION DEBUG ===")
+            print(f"Processing BREP file: {brep_path}")
+            
+            # Load the BREP file
+            builder = BRep_Builder()
+            shape = TopoDS_Shape()
+            read_result = breptools.Read(shape, brep_path, builder)
+            print(f"BREP read result: {read_result}")
+            
+            # In some PythonOCC versions, breptools.Read returns None on success
+            if read_result is False:  # Explicitly check for False
+                raise ValueError(f"Could not read BREP file: {brep_path}")
+            
+            # Check if we got a valid shape
+            if shape.IsNull():
+                raise ValueError(f"No valid shape found in BREP file: {brep_path}")
+            
+            print(f"Shape loaded successfully, type: {type(shape)}")
+            
+            # Extract the wire using robust method
+            print("Extracting wire using robust method...")
+            wire = self._wire_from_shape_relaxed(shape)
+            print(f"Wire extracted successfully, type: {type(wire)}")
+            print(f"Original wire orientation: {wire.Orientation()}")
+            
+            # Validate wire closure using proper enum comparison
+            print("Checking wire closure status...")
+            wire_checker = BRepCheck_Wire(wire)
+            st = wire_checker.Status()
+            print(f"Wire status: {st}")
+            print(f"BRepCheck_NoError value: {BRepCheck_NoError}")
+            print(f"Status comparison: {st} != {BRepCheck_NoError} = {st != BRepCheck_NoError}")
+            
+            if st != BRepCheck_NoError:
+                print(f"Wire closure check failed with status: {st}")
+                # As a last check, try making a face on Z=0 and validate that
+                print("Attempting face creation as fallback validation...")
+                face_try = BRepBuilderAPI_MakeFace(wire).Face()
+                face_valid = BRepCheck_Analyzer(face_try, True).IsValid()
+                print(f"Face creation result: {face_valid}")
+                
+                if not face_valid:
+                    raise ValueError(f"Wire not closed (status={st}) and face build failed. Internal shapes must be properly closed.")
+                else:
+                    print(f"Wire closure validation passed via face validation ✓")
+            else:
+                print(f"Wire closure validation passed ✓")
+            
+            print(f"=== END WIRE VALIDATION DEBUG ===")
+            
+            # Check if wire needs to be canonicalized (should be FORWARD = 0)
+            if wire.Orientation() != 0:  # Not FORWARD
+                print(f"Canonicalizing wire orientation from {wire.Orientation()} to FORWARD (0)")
+                
+                # Reverse the wire to make it FORWARD
+                wire.Reverse()
+                print(f"Wire orientation after canonicalization: {wire.Orientation()}")
+                
+                # Create a new face from the canonicalized wire
+                face_maker = BRepBuilderAPI_MakeFace(wire)
+                if not face_maker.IsDone():
+                    raise ValueError("Could not create face from canonicalized wire")
+                
+                canonical_face = face_maker.Face()
+                
+                # Validate the canonicalized face
+                if not BRepCheck_Analyzer(canonical_face, True).IsValid():
+                    raise ValueError("Canonicalized face is not valid")
+                
+                # Write the canonicalized shape back to the file
+                if not breptools_Write(canonical_face, brep_path):
+                    raise ValueError(f"Could not write canonicalized BREP file: {brep_path}")
+                
+                print(f"Successfully canonicalized wire orientation in: {brep_path}")
+                return True
+            else:
+                print(f"Wire already has canonical orientation (FORWARD = 0)")
+                return True
+                
+        except Exception as e:
+            print(f"Error canonicalizing wire orientation: {e}")
+            return False
+    
     def delete(self, *args, **kwargs):
         """Override delete to clean up associated files."""
         import os

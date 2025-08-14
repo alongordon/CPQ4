@@ -56,15 +56,57 @@ class Panel2D:
         print(f"Extracted wire: {wire}")
         
         if kind == "internal_cutout":
-            # For internal cutouts: convert relative coordinates to absolute
+            # For internal cutouts: simple translation only (no rotation or scaling)
             # tx = distance from left edge, ty = distance from top edge
-            shape_x = self.origin[0] + tx  # left edge + offset
-            shape_y = self.origin[1] + self.height - ty  # top edge - offset (Y is inverted)
+            print(f"=== INTERNAL CUTOUT SHAPE DEBUG ===")
+            print(f"Panel dimensions: width={self.width}, height={self.height}")
+            print(f"Panel origin: {self.origin}")
+            print(f"Frontend provided: tx={tx}, ty={ty}")
             
-            # Transform the wire
-            transformed_shape = BRepBuilderAPI_Transform(wire, 
-                               self._make_trsf(shape_x, shape_y, angle_deg, scale), True).Shape()
+            # Get the shape's bounding box for debugging
+            bbox_shape = Bnd_Box()
+            brepbndlib.Add(shape, bbox_shape)
+            sxmin, symin, szmin, sxmax, symax, szmax = bbox_shape.Get()
+            shape_width = sxmax - sxmin
+            shape_height = symax - symin
+            
+            print(f"Original shape dimensions: {shape_width:.1f} x {shape_height:.1f}")
+            
+            # Get original wire bounds for comparison
+            bbox_wire = Bnd_Box()
+            brepbndlib.Add(wire, bbox_wire)
+            xmin_w, ymin_w, zmin_w, xmax_w, ymax_w, zmax_w = bbox_wire.Get()
+            print(f"Original wire bounds: X({xmin_w:.1f}, {xmax_w:.1f}), Y({ymin_w:.1f}, {ymax_w:.1f})")
+            
+            # Calculate center-based positioning
+            # tx = distance from left edge to center of shape
+            # ty = distance from top edge to center of shape
+            
+            # Calculate the actual center of the wire from its bounds
+            wire_center_x = (xmin_w + xmax_w) / 2
+            wire_center_y = (ymin_w + ymax_w) / 2
+            print(f"Actual wire center: ({wire_center_x:.1f}, {wire_center_y:.1f})")
+            
+            # Calculate the target center position
+            target_center_x = self.origin[0] + tx  # left edge + offset to center
+            target_center_y = self.origin[1] + self.height - ty  # top edge - offset to center (Y is inverted)
+            print(f"Target center position: ({target_center_x:.1f}, {target_center_y:.1f})")
+            
+            # Calculate the translation needed to move wire's current center to target center
+            translation_x = target_center_x - wire_center_x
+            translation_y = target_center_y - wire_center_y
+            print(f"Calculated translation (center-based): translation_x={translation_x:.1f}, translation_y={translation_y:.1f}")
+            
+            # Simple translation only - no rotation or scaling
+            print(f"Applying simple translation: ({translation_x:.1f}, {translation_y:.1f})")
+            transformed_shape = self._translate_shape(shape, translation_x, translation_y)
             print(f"Transformed internal shape: {transformed_shape}")
+            
+            # Check transformed shape bounds
+            bbox_transformed = Bnd_Box()
+            brepbndlib.Add(transformed_shape, bbox_transformed)
+            txmin, tymin, tzmin, txmax, tymax, tzmax = bbox_transformed.Get()
+            print(f"Transformed shape bounds: X({txmin:.1f}, {txmax:.1f}), Y({tymin:.1f}, {tymax:.1f})")
             
             # Extract wire from transformed shape
             exp = TopExp_Explorer(transformed_shape, TopAbs_WIRE)
@@ -72,19 +114,36 @@ class Panel2D:
                 placed_wire = exp.Current()
                 print(f"Extracted internal wire: {placed_wire}")
                 
-                # Validate the wire before adding (simplified)
-                try:
-                    # Test if we can create a face from this wire (validation)
-                    test_face = BRepBuilderAPI_MakeFace(placed_wire).Face()
-                    if not BRepCheck_Analyzer(test_face, True).IsValid():
-                        print(f"Warning: Invalid internal wire, skipping")
-                        return
-                except Exception as e:
-                    print(f"Warning: Could not validate internal wire: {e}")
-                    return
+                # Check placed wire bounds
+                bbox_placed = Bnd_Box()
+                brepbndlib.Add(placed_wire, bbox_placed)
+                pxmin, pymin, pzmin, pxmax, pymax, pzmax = bbox_placed.Get()
+                print(f"Placed wire bounds: X({pxmin:.1f}, {pxmax:.1f}), Y({pymin:.1f}, {pymax:.1f})")
+                
+                # Check if wire is within panel bounds
+                panel_x_min = self.origin[0]
+                panel_x_max = self.origin[0] + self.width
+                panel_y_min = self.origin[1]
+                panel_y_max = self.origin[1] + self.height
+                
+                print(f"Panel bounds: X({panel_x_min:.1f}, {panel_x_max:.1f}), Y({panel_y_min:.1f}, {panel_y_max:.1f})")
+                
+                if (pxmax < panel_x_min or pxmin > panel_x_max or pymax < panel_y_min or pymin > panel_y_max):
+                    print(f"WARNING: Internal wire is outside panel bounds!")
+                else:
+                    print(f"Internal wire is within panel bounds ✓")
+                
+                # Wire is already validated as closed and canonicalized at upload time
+                # For internal cutouts (holes), reverse the wire just before adding
+                # This follows the convention: outer boundary = use as-is, holes = reverse
+                print(f"Wire orientation (canonical): {placed_wire.Orientation()}")
+                print(f"Reversing wire for internal cutout (hole)...")
+                placed_wire.Reverse()  # Simple reverse for holes
+                print(f"Wire orientation after reversal: {placed_wire.Orientation()}")
                 
                 self._inner_wires.append(placed_wire)
-                print(f"Added as internal wire. Total internal wires: {len(self._inner_wires)}")
+                print(f"Successfully added as internal wire. Total internal wires: {len(self._inner_wires)}")
+                print(f"=== END INTERNAL CUTOUT DEBUG ===")
             else:
                 print("Error: No wire found in transformed shape")
         else:
@@ -277,38 +336,14 @@ class Panel2D:
             
             for i, w in enumerate(self._inner_wires):
                 print(f"Adding internal wire {i+1}: {w}")
-                try:
-                    maker.Add(w)  # inner loops = holes
-                    print(f"Successfully added internal wire {i+1}")
-                except Exception as e:
-                    print(f"Error adding internal wire {i+1}: {e}")
-                    # Continue with other wires instead of failing completely
+                maker.Add(w)  # inner loops = holes
+                print(f"Successfully added internal wire {i+1}")
             
-            try:
-                face = maker.Face()
-                print(f"Created face with {len(self._inner_wires)} internal wires")
-                
-                # Simple validation - if it fails, fall back to face without holes
-                try:
-                    self._validate(face)
-                    print("Face validation passed")
-                    return face
-                except Exception as validation_error:
-                    print(f"Face validation failed: {validation_error}")
-                    print("Falling back to face without internal wires")
-                    fallback_maker = BRepBuilderAPI_MakeFace(self._make_outer_rect_wire())
-                    fallback_face = fallback_maker.Face()
-                    self._validate(fallback_face)
-                    return fallback_face
-                    
-            except Exception as e:
-                print(f"Error creating face with internal wires: {e}")
-                # Fallback to face without internal wires
-                print("Falling back to face without internal wires")
-                fallback_maker = BRepBuilderAPI_MakeFace(self._make_outer_rect_wire())
-                fallback_face = fallback_maker.Face()
-                self._validate(fallback_face)
-                return fallback_face
+            face = maker.Face()
+            print(f"Created face with {len(self._inner_wires)} internal wires")
+            self._validate(face)
+            print("Face validation passed")
+            return face
         
         # 1) Compute the final outer boundary that already includes notches/slots
         outer_wire = self._outer_wire_after_edge_cuts()
@@ -319,47 +354,15 @@ class Panel2D:
         
         for i, w in enumerate(self._inner_wires):
             print(f"Adding internal wire {i+1}: {w}")
-            try:
-                maker.Add(w)  # inner loops = holes
-                print(f"Successfully added internal wire {i+1}")
-            except Exception as e:
-                print(f"Error adding internal wire {i+1}: {e}")
-                # Continue with other wires instead of failing completely
+            maker.Add(w)  # inner loops = holes
+            print(f"Successfully added internal wire {i+1}")
         
-        try:
-            face = maker.Face()
-            print(f"Final face with holes: {face}")
-            
-            # Simple validation - if it fails, fall back to face without holes
-            try:
-                self._validate(face)
-                print("Face validation passed")
-            except Exception as validation_error:
-                print(f"Face validation failed: {validation_error}")
-                print("Falling back to face without internal wires")
-                fallback_maker = BRepBuilderAPI_MakeFace(outer_wire)
-                face = fallback_maker.Face()
-                print(f"Fallback face: {face}")
-                    
-        except Exception as e:
-            print(f"Error creating face with internal wires: {e}")
-            # Fallback to face without internal wires
-            print("Falling back to face without internal wires")
-            fallback_maker = BRepBuilderAPI_MakeFace(outer_wire)
-            face = fallback_maker.Face()
-            print(f"Fallback face: {face}")
+        face = maker.Face()
+        print(f"Final face with holes: {face}")
         
-        # 3) Optional: fix orientations
-        try:
-            fix = ShapeFix_Face(face)
-            fix.Perform()
-            face = fix.Face()
-            print("Applied ShapeFix_Face")
-        except Exception as e:
-            print(f"ShapeFix_Face failed: {e}")
-        
-        # 4) Validate and return
+        # Validate and return (wires are already validated at upload time)
         self._validate(face)
+        print("Face validation passed")
         print(f"Final panel shape: {face}")
         
         # Debug: Print wire information

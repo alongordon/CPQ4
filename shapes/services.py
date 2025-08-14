@@ -37,10 +37,11 @@ def load_brep_file(brep_path: str | Path) -> Any:
         
         print(f"Attempting to read file: {brep_path}")
         # Read the BREP file using the correct function signature
-        success = BRepTools.breptools_Read(shape, str(brep_path), builder)
-        print(f"BRepTools.breptools_Read result: {success}")
+        read_result = BRepTools.breptools_Read(shape, str(brep_path), builder)
+        print(f"BRepTools.breptools_Read result: {read_result}")
         
-        if not success:
+        # In some PythonOCC versions, breptools.Read returns None on success
+        if read_result is False:  # Explicitly check for False
             print(f"BREP file read failed")
             print(f"File size: {os.path.getsize(brep_path)} bytes")
             raise ValueError(f"BRepTools failed to read BREP file: {brep_path}")
@@ -863,6 +864,12 @@ def process_shape_asset(shape_asset: ShapeAsset) -> None:
         brep_path = os.path.join(settings.MEDIA_ROOT, brep_filename)
         save_brep_file(canonical_face, brep_path)
         print(f"BREP file saved to: {brep_path}")
+        
+        # Step 5.5: Canonicalize wire orientation to CCW/FORWARD and validate closure
+        print("Canonicalizing wire orientation and validating closure...")
+        if not shape_asset.canonicalize_wire_orientation(brep_path):
+            raise RuntimeError("Wire orientation canonicalization and closure validation failed. Internal shapes must be properly closed.")
+        print("Wire orientation canonicalized and closure validated successfully")
         
         # Step 6: Generate preview SVG
         print("Generating preview SVG...")
