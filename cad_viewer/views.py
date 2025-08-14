@@ -102,7 +102,14 @@ def render_brep_view(request):
                 print(f"Shape asset type: {shape_asset.shape_type}")
                 
                 # Add shape to panel using the helper method
-                shape_asset.add_to_panel2d(panel, tx=x, ty=y, angle_deg=angle_deg, scale=1.0)
+                if shape_type == 'edge_affecting':
+                    # For edge-affecting shapes, pass edge and position instead of tx/ty
+                    edge = shape_data.get('edge')
+                    position = float(shape_data.get('position', 0))
+                    shape_asset.add_to_panel2d(panel, angle_deg=angle_deg, scale=1.0, edge=edge, position=position)
+                else:
+                    # For internal cutouts, use the original tx/ty approach
+                    shape_asset.add_to_panel2d(panel, tx=x, ty=y, angle_deg=angle_deg, scale=1.0)
                 print(f"Shape {i+1} added successfully")
                 
             except Exception as e:
@@ -245,7 +252,14 @@ def export_to_dxf(request):
                 shape_asset = ShapeAsset.objects.get(id=shape_id)
                 
                 # Add shape to panel using the helper method
-                shape_asset.add_to_panel2d(panel, tx=x, ty=y, angle_deg=angle_deg, scale=1.0)
+                if shape_type == 'edge_affecting':
+                    # For edge-affecting shapes, pass edge and position instead of tx/ty
+                    edge = shape_data.get('edge')
+                    position = float(shape_data.get('position', 0))
+                    shape_asset.add_to_panel2d(panel, angle_deg=angle_deg, scale=1.0, edge=edge, position=position)
+                else:
+                    # For internal cutouts, use the original tx/ty approach
+                    shape_asset.add_to_panel2d(panel, tx=x, ty=y, angle_deg=angle_deg, scale=1.0)
                 
             except Exception as e:
                 print(f"Error adding shape {shape_id}: {e}")
@@ -291,7 +305,14 @@ def export_to_brep(request):
                 shape_asset = ShapeAsset.objects.get(id=shape_id)
                 
                 # Add shape to panel using the helper method
-                shape_asset.add_to_panel2d(panel, tx=x, ty=y, angle_deg=angle_deg, scale=1.0)
+                if shape_type == 'edge_affecting':
+                    # For edge-affecting shapes, pass edge and position instead of tx/ty
+                    edge = shape_data.get('edge')
+                    position = float(shape_data.get('position', 0))
+                    shape_asset.add_to_panel2d(panel, angle_deg=angle_deg, scale=1.0, edge=edge, position=position)
+                else:
+                    # For internal cutouts, use the original tx/ty approach
+                    shape_asset.add_to_panel2d(panel, tx=x, ty=y, angle_deg=angle_deg, scale=1.0)
                 
             except Exception as e:
                 print(f"Error adding shape {shape_id}: {e}")

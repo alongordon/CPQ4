@@ -958,7 +958,7 @@
                          addSelectedShape() {
                  if (!this.selectedShape) return;
                  
-                 let x, y, angle_deg;
+                 let x, y, angle_deg, edge, position;
                  
                  if (this.selectedShape.shape_type === 'internal_cutout') {
                      // Internal shape - user provides x and y
@@ -971,9 +971,9 @@
                          return;
                      }
                  } else {
-                     // Edge shape - calculate position based on edge
-                     const edge = document.getElementById('edge-select').value;
-                     const position = parseFloat(document.getElementById('edge-position').value);
+                     // Edge shape - use edge and position directly
+                     edge = document.getElementById('edge-select').value;
+                     position = parseFloat(document.getElementById('edge-position').value);
                      
                      if (isNaN(position)) {
                          this.updateStatus('Please enter a valid position', 'error');
@@ -995,32 +995,12 @@
                          }
                      }
                      
-                                           // Get rotation from input field
-                      const rotation = parseFloat(document.getElementById('edge-rotation').value) || 0;
-                      
-                      // Calculate position based on edge
-                      switch (edge) {
-                          case 'Left':
-                              x = 0;
-                              y = position;
-                              angle_deg = rotation;
-                              break;
-                          case 'Right':
-                              x = this.panelWidth - this.selectedShape.bbox_w_mm;
-                              y = position;
-                              angle_deg = rotation;
-                              break;
-                          case 'Top':
-                              x = position;
-                              y = this.panelHeight - this.selectedShape.bbox_h_mm;
-                              angle_deg = rotation;
-                              break;
-                          case 'Bottom':
-                              x = position;
-                              y = 0;
-                              angle_deg = rotation;
-                              break;
-                      }
+                     // Get rotation from input field
+                     angle_deg = parseFloat(document.getElementById('edge-rotation').value) || 0;
+                     
+                     // For edge shapes, we don't calculate x/y anymore - backend will handle it
+                     x = 0; // Placeholder, will be ignored for edge shapes
+                     y = 0; // Placeholder, will be ignored for edge shapes
                  }
                 
                 // Check for duplicate shapes
@@ -1046,6 +1026,12 @@
                     angle_deg: angle_deg
                 };
                 
+                // Add edge and position for edge-affecting shapes
+                if (this.selectedShape.shape_type === 'edge_affecting') {
+                    placedShape.edge = edge;
+                    placedShape.position = position;
+                }
+                
                 this.placedShapes.push(placedShape);
                 this.updatePlacedShapesList();
                 this.refreshView();
@@ -1065,9 +1051,14 @@
                 this.placedShapes.forEach((shape, index) => {
                     const item = document.createElement('div');
                     item.className = 'placed-shape-item';
+                    let positionInfo = `Position: (${shape.x}, ${shape.y})`;
+                    if (shape.shape_type === 'edge_affecting' && shape.edge && shape.position !== undefined) {
+                        positionInfo = `${shape.edge} edge, Position: ${shape.position}mm`;
+                    }
+                    
                     item.innerHTML = `
                         <strong>${shape.name}</strong> (${shape.shape_type})<br>
-                        Position: (${shape.x}, ${shape.y}) | Angle: ${shape.angle_deg}°
+                        ${positionInfo} | Angle: ${shape.angle_deg}°
                         <button class="btn btn-secondary" style="float: right; padding: 2px 8px; font-size: 12px;" 
                                 onclick="cadViewer.removeShape(${index})">Remove</button>
                     `;

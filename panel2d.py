@@ -37,7 +37,9 @@ class Panel2D:
         tx: float = 0.0,
         ty: float = 0.0,
         angle_deg: float = 0.0,   # rotation about Z (degrees)
-        scale: float = 1.0        # uniform scale about origin
+        scale: float = 1.0,       # uniform scale about origin
+        edge: str = None,         # "Left", "Right", "Top", "Bottom" for edge_affecting shapes
+        position: float = 0.0     # position along the edge (from top for Left/Right, from left for Top/Bottom)
     ) -> None:
         """Load a BREP profile, place it, and schedule it as a cut against the panel."""
         print(f"Adding shape from {path}, kind: {kind}, pos: ({tx}, {ty}), angle: {angle_deg}")
@@ -86,9 +88,12 @@ class Panel2D:
             else:
                 print("Error: No wire found in transformed shape")
         else:
-            # For edge-affecting shapes: the frontend already calculates the correct position
-            # based on the selected edge (Left, Right, Top, Bottom) and provides
-            # coordinates that should place the shape correctly to cut the panel edge
+            # For edge-affecting shapes: calculate position internally based on edge and position
+            print(f"=== EDGE AFFECTING SHAPE DEBUG ===")
+            print(f"Panel dimensions: width={self.width}, height={self.height}")
+            print(f"Panel origin: {self.origin}")
+            print(f"Edge: {edge}, Position: {position}")
+            print(f"Angle: {angle_deg} degrees, Scale: {scale}")
             
             # Get the shape's bounding box for debugging
             bbox_shape = Bnd_Box()
@@ -97,14 +102,7 @@ class Panel2D:
             shape_width = sxmax - sxmin
             shape_height = symax - symin
             
-            print(f"Shape dimensions: {shape_width:.1f} x {shape_height:.1f}")
-            print(f"Frontend provided position: ({tx}, {ty})")
-            
-            print(f"=== EDGE AFFECTING SHAPE DEBUG ===")
-            print(f"Panel dimensions: width={self.width}, height={self.height}")
-            print(f"Panel origin: {self.origin}")
-            print(f"Final position: tx={tx}, ty={ty}")
-            print(f"Angle: {angle_deg} degrees, Scale: {scale}")
+            print(f"Original shape dimensions: {shape_width:.1f} x {shape_height:.1f}")
             
             # Get original wire bounds for comparison
             bbox_wire = Bnd_Box()
@@ -139,13 +137,46 @@ class Panel2D:
                     brepbndlib.Add(wire, bbox_normalized)
                     nxmin, nymin, nzmin, nxmax, nymax, nzmax = bbox_normalized.Get()
                     print(f"DEBUG: Wire bounds after normalization: X({nxmin:.1f}, {nxmax:.1f}), Y({nymin:.1f}, {nymax:.1f})")
+                else:
+                    # Wire already normalized, use rotated bounds
+                    nxmin, nymin, nzmin, nxmax, nymax, nzmax = rxmin, rymin, rzmin, rxmax, rymax, rzmax
+            else:
+                # No rotation, use original bounds
+                bbox_original = Bnd_Box()
+                brepbndlib.Add(wire, bbox_original)
+                nxmin, nymin, nzmin, nxmax, nymax, nzmax = bbox_original.Get()
+                print(f"DEBUG: Wire bounds (no rotation): X({nxmin:.1f}, {nxmax:.1f}), Y({nymin:.1f}, {nymax:.1f})")
+            
+            # Calculate effective dimensions after rotation and normalization
+            effective_width = nxmax - nxmin
+            effective_height = nymax - nymin
+            print(f"Effective dimensions after rotation: {effective_width:.1f} x {effective_height:.1f}")
+            
+            # Calculate tx/ty based on edge and position
+            if edge == "Left":
+                tx = 0
+                ty = position
+            elif edge == "Right":
+                tx = self.width - effective_width
+                ty = position
+            elif edge == "Top":
+                tx = position
+                ty = self.height - effective_height
+            elif edge == "Bottom":
+                tx = position
+                ty = 0
+            else:
+                # Fallback to provided tx/ty if edge is not specified
+                print(f"Warning: No edge specified, using provided tx={tx}, ty={ty}")
+            
+            print(f"Calculated position: tx={tx}, ty={ty}")
             
             # Create edge shape face from the rotated wire
             edge_shape_face_maker = BRepBuilderAPI_MakeFace(wire)
             edge_shape_face = edge_shape_face_maker.Face()
             print(f"Created edge shape face from rotated wire: {edge_shape_face}")
             
-            # Then translate edge shape face to target position
+            # Then translate edge shape face to calculated position
             transformed_edge_shape_face = self._translate_shape(edge_shape_face, tx, ty)
             print(f"Transformed edge shape face: {transformed_edge_shape_face}")
             

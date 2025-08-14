@@ -140,7 +140,7 @@ class ShapeAsset(models.Model):
             return f"{self.area_mm2:.1f} mm²"
         return "Not computed"
     
-    def add_to_panel2d(self, panel, tx=0.0, ty=0.0, angle_deg=0.0, scale=1.0):
+    def add_to_panel2d(self, panel, tx=0.0, ty=0.0, angle_deg=0.0, scale=1.0, edge=None, position=0.0):
         """Add this shape to a Panel2D instance with the specified transformation."""
         if not self.canonical_brep:
             raise ValueError(f"Shape {self.name} has no canonical BREP file")
@@ -151,7 +151,9 @@ class ShapeAsset(models.Model):
             tx=tx,
             ty=ty,
             angle_deg=angle_deg,
-            scale=scale
+            scale=scale,
+            edge=edge,
+            position=position
         )
     
     def delete(self, *args, **kwargs):
