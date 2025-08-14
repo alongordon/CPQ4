@@ -15,12 +15,14 @@ class ShapeAssetAdmin(admin.ModelAdmin):
         'has_preview', 
         'get_bbox_display', 
         'get_area_display',
+        'shape_type',
         'default_edge',
         'default_offset_mm',
         'created_at'
     ]
     
     list_filter = [
+        'shape_type',
         'default_edge',
         'has_holes',
         'created_at',
@@ -53,6 +55,10 @@ class ShapeAssetAdmin(admin.ModelAdmin):
         ('Derived Properties (Read-only)', {
             'fields': ('bbox_w_mm', 'bbox_h_mm', 'area_mm2', 'has_holes'),
             'classes': ('collapse',)
+        }),
+        ('Panel2D Library Settings', {
+            'fields': ('shape_type',),
+            'description': 'Settings for Panel2D library integration'
         }),
         ('Placement Defaults', {
             'fields': ('default_edge', 'default_offset_mm'),

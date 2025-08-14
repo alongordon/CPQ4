@@ -13,6 +13,11 @@ class ShapeAsset(models.Model):
         ('Right', 'Right'),
     ]
     
+    SHAPE_TYPE_CHOICES = [
+        ('internal_cutout', 'Internal Cutout'),
+        ('edge_affecting', 'Edge Affecting'),
+    ]
+    
     # Primary identifier
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
@@ -93,6 +98,14 @@ class ShapeAsset(models.Model):
         help_text="Rotation angle in degrees for the attach frame"
     )
     
+    # Panel2D library shape type
+    shape_type = models.CharField(
+        max_length=20,
+        choices=SHAPE_TYPE_CHOICES,
+        default='internal_cutout',
+        help_text="Type of shape for Panel2D library integration"
+    )
+    
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -126,6 +139,20 @@ class ShapeAsset(models.Model):
         if self.area_mm2 is not None:
             return f"{self.area_mm2:.1f} mm²"
         return "Not computed"
+    
+    def add_to_panel2d(self, panel, tx=0.0, ty=0.0, angle_deg=0.0, scale=1.0):
+        """Add this shape to a Panel2D instance with the specified transformation."""
+        if not self.canonical_brep:
+            raise ValueError(f"Shape {self.name} has no canonical BREP file")
+        
+        panel.add_library_shape(
+            path=self.canonical_brep.path,
+            kind=self.shape_type,
+            tx=tx,
+            ty=ty,
+            angle_deg=angle_deg,
+            scale=scale
+        )
     
     def delete(self, *args, **kwargs):
         """Override delete to clean up associated files."""

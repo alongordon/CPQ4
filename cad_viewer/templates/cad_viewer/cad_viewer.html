@@ -1,0 +1,1184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CPQ4 CAD Viewer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            display: flex;
+            gap: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .sidebar {
+            width: 300px;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .main-content {
+            flex: 1;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            min-height: 700px;
+        }
+        
+        .panel-info {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+        
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        
+        .btn:hover {
+            background: #0056b3;
+        }
+        
+        .btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+        }
+        
+        .btn-secondary:hover {
+            background: #545b62;
+        }
+        
+        .btn-export {
+            background: #17a2b8;
+        }
+        
+        .btn-export:hover {
+            background: #138496;
+        }
+        
+        .export-controls {
+            margin-top: 20px;
+            padding: 15px;
+            background: #e9ecef;
+            border-radius: 5px;
+        }
+        
+        .export-controls h3 {
+            margin-top: 0;
+            margin-bottom: 10px;
+        }
+        
+        .panel-dimensions {
+            margin-top: 20px;
+            padding: 15px;
+            background: #e9ecef;
+            border-radius: 5px;
+        }
+        
+        .panel-dimensions h3 {
+            margin-top: 0;
+            margin-bottom: 10px;
+        }
+        
+        .dimension-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .dimension-input {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .dimension-input label {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .dimension-input input {
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .dimension-input input:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+        }
+        
+        .shape-library, .shape-placement, .placed-shapes {
+            margin-top: 20px;
+            padding: 15px;
+            background: #e9ecef;
+            border-radius: 5px;
+        }
+        
+        .shape-library h3, .shape-placement h3, .placed-shapes h3 {
+            margin-top: 0;
+            margin-bottom: 10px;
+        }
+        
+        .shape-type-filter, .shape-selection {
+            margin-bottom: 15px;
+        }
+        
+        .shape-type-filter label, .shape-selection label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        .shape-type-filter select, .shape-selection select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        
+        .shape-info {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        
+        .placement-controls {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+        }
+        
+        .placement-controls label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        .placement-controls input, .placement-controls select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+        
+        .placed-shapes-list {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            min-height: 50px;
+        }
+        
+        .placed-shape-item {
+            background: white;
+            padding: 8px;
+            margin-bottom: 5px;
+            border-radius: 3px;
+            border-left: 3px solid #007bff;
+        }
+        
+                           .occ-viewer-container {
+              border: 2px solid #ddd;
+              border-radius: 5px;
+              overflow: visible;
+              background: white;
+              padding: 20px;
+              min-height: 600px;
+          }
+         
+                   .axis-container {
+              position: relative;
+              display: inline-block;
+              margin: 20px 20px 20px 60px;
+          }
+         
+                   .x-axis {
+              position: absolute;
+              bottom: -30px;
+              left: 0;
+              width: 100%;
+              height: 30px;
+          }
+          
+          .y-axis {
+              position: absolute;
+              top: 0;
+              left: -40px;
+              width: 40px;
+              height: 100%;
+          }
+          
+          .axis-line {
+              position: absolute;
+              background-color: #333;
+          }
+          
+          .axis-line.x-axis {
+              bottom: 0;
+              left: 0;
+              width: 100%;
+              height: 2px;
+          }
+          
+          .axis-line.y-axis {
+              top: 0;
+              right: 0;
+              width: 2px;
+              height: 100%;
+          }
+          
+                     .tick-mark {
+               position: absolute;
+               background-color: #333;
+               width: 6px;
+               height: 2px;
+           }
+          
+          .tick-mark.x-axis {
+              bottom: 2px;
+              width: 6px;
+              height: 2px;
+          }
+          
+          .tick-mark.y-axis {
+              right: 2px;
+              width: 6px;
+              height: 2px;
+          }
+         
+         .tick-label {
+             position: absolute;
+             font-size: 10px;
+             color: #333;
+             font-family: Arial, sans-serif;
+         }
+         
+                   .tick-label.x-axis {
+              top: 5px;
+              transform: translateX(-50%);
+              white-space: nowrap;
+              max-width: 60px;
+              overflow: hidden;
+              text-overflow: ellipsis;
+          }
+         
+                   .tick-label.y-axis {
+              right: 15px;
+              transform: translateY(-50%);
+          }
+        
+        #occ-viewer {
+            position: relative;
+            text-align: center;
+        }
+        
+        #occ-image {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        
+        .viewer-overlay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        
+        .viewer-controls {
+            margin-top: 15px;
+            text-align: center;
+        }
+        
+        .zoom-controls {
+            margin-top: 10px;
+            display: flex;
+            gap: 5px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .zoom-controls .btn {
+            padding: 5px 10px;
+            font-size: 12px;
+            margin-right: 5px;
+        }
+        
+        .pan-controls {
+            margin-top: 10px;
+            display: flex;
+            gap: 5px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .pan-controls .btn {
+            padding: 5px 10px;
+            font-size: 12px;
+            margin-right: 5px;
+        }
+        
+        .status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <h2>CPQ4 CAD Viewer</h2>
+            
+            <div class="panel-info">
+                <h3>Panel</h3>
+                <p><strong>Dimensions:</strong> {{ panel_width }}mm × {{ panel_height }}mm</p>
+                <p><strong>Area:</strong> {{ panel_area }}mm²</p>
+            </div>
+            
+            <div class="panel-dimensions">
+                <h3>Panel Dimensions</h3>
+                <div class="dimension-controls">
+                    <div class="dimension-input">
+                        <label for="panel-width">Width (mm):</label>
+                        <input type="number" id="panel-width" min="100" max="5000" step="1" value="{{ panel_width }}">
+                    </div>
+                    <div class="dimension-input">
+                        <label for="panel-height">Height (mm):</label>
+                        <input type="number" id="panel-height" min="100" max="5000" step="1" value="{{ panel_height }}">
+                    </div>
+                    <button class="btn btn-secondary" id="update-dimensions-btn">Update Panel</button>
+                </div>
+            </div>
+            
+            <div class="shape-library">
+                <h3>Shape Library</h3>
+                <div class="shape-type-filter">
+                    <label for="shape-type-filter">Shape Type:</label>
+                    <select id="shape-type-filter">
+                        <option value="">All Shapes</option>
+                        <option value="internal_cutout">Internal Cutouts</option>
+                        <option value="edge_affecting">Edge Affecting</option>
+                    </select>
+                </div>
+                <div class="shape-selection">
+                    <label for="shape-select">Select Shape:</label>
+                    <select id="shape-select">
+                        <option value="">-- Choose a shape --</option>
+                    </select>
+                </div>
+                <div class="shape-info" id="shape-info" style="display: none;">
+                    <p><strong>Type:</strong> <span id="shape-type-display"></span></p>
+                    <p><strong>Size:</strong> <span id="shape-size-display"></span></p>
+                </div>
+            </div>
+            
+            <div class="shape-placement">
+                <h3>Placement</h3>
+                <div class="placement-controls" id="placement-controls" style="display: none;">
+                    <!-- Internal shape controls -->
+                    <div id="internal-controls" style="display: none;">
+                        <label for="internal-x">X Position (from left):</label>
+                        <input type="number" id="internal-x" min="0" step="1" placeholder="mm">
+                        <label for="internal-y">Y Position (from top):</label>
+                        <input type="number" id="internal-y" min="0" step="1" placeholder="mm">
+                    </div>
+                    
+                                         <!-- Edge shape controls -->
+                     <div id="edge-controls" style="display: none;">
+                         <label for="edge-select">Edge:</label>
+                         <select id="edge-select">
+                             <option value="Left">Left</option>
+                             <option value="Right">Right</option>
+                             <option value="Top">Top</option>
+                             <option value="Bottom">Bottom</option>
+                         </select>
+                         <div id="edge-position-input">
+                             <label for="edge-position">Position (from edge):</label>
+                             <input type="number" id="edge-position" min="0" step="1" placeholder="mm">
+                         </div>
+                         <div id="edge-rotation-input">
+                             <label for="edge-rotation">Rotation (degrees):</label>
+                             <input type="number" id="edge-rotation" min="-360" max="360" step="1" value="0" placeholder="0">
+                         </div>
+                     </div>
+                    
+                    <button class="btn" id="add-shape-btn">Add Shape</button>
+                </div>
+            </div>
+            
+            <div class="placed-shapes">
+                <h3>Placed Shapes</h3>
+                <div id="placed-shapes-list">
+                    <p>No shapes placed yet.</p>
+                </div>
+                <button class="btn btn-secondary" id="clear-all-btn">Clear All</button>
+            </div>
+            
+            <div class="export-controls">
+                <h3>Export</h3>
+                <button class="btn btn-export" id="export-brep-btn">Export to BREP</button>
+                <button class="btn btn-export" id="export-dxf-btn">Export to DXF</button>
+            </div>
+            
+            <div id="status" class="status info">
+                Panel viewer ready. Use zoom controls to navigate.
+            </div>
+        </div>
+        
+        <div class="main-content">
+            <h3>Panel Layout</h3>
+                         <div class="occ-viewer-container">
+                 <div class="axis-container">
+                     <div id="occ-viewer">
+                         <img id="occ-image" src="" alt="OCC Viewer" style="max-width: 100%; height: auto; border: 1px solid #ccc;">
+                     </div>
+                     <div id="x-axis" class="x-axis"></div>
+                     <div id="y-axis" class="y-axis"></div>
+                 </div>
+                <div class="viewer-controls">
+                    <button id="refresh-view-btn" class="btn btn-secondary">Refresh View</button>
+                    <div class="zoom-controls">
+                        <button id="zoom-in-btn" class="btn btn-secondary">Zoom In</button>
+                        <button id="zoom-out-btn" class="btn btn-secondary">Zoom Out</button>
+                        <button id="zoom-fit-btn" class="btn btn-secondary">Fit All</button>
+                        <button id="zoom-reset-btn" class="btn btn-secondary">Reset View</button>
+                    </div>
+                    <div class="pan-controls">
+                        <button id="pan-left-btn" class="btn btn-secondary" disabled title="Panning not available in current OCC viewer">← Left</button>
+                        <button id="pan-right-btn" class="btn btn-secondary" disabled title="Panning not available in current OCC viewer">Right →</button>
+                        <button id="pan-up-btn" class="btn btn-secondary" disabled title="Panning not available in current OCC viewer">↑ Up</button>
+                        <button id="pan-down-btn" class="btn btn-secondary" disabled title="Panning not available in current OCC viewer">↓ Down</button>
+                        <button id="pan-center-btn" class="btn btn-secondary" disabled title="Panning not available in current OCC viewer">Center</button>
+                    </div>
+                    <div style="font-size: 11px; color: #666; margin-top: 5px;">
+                        Pan controls disabled - use zoom to navigate
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class CADViewer {
+            constructor() {
+                this.occImage = document.getElementById('occ-image');
+                this.panelWidth = {{ panel_width }};
+                this.panelHeight = {{ panel_height }};
+                
+                // Zoom state
+                this.zoomLevel = 0.8; // Default zoom level
+                
+                // Shape placement state
+                this.placedShapes = [];
+                this.shapesLibrary = [];
+                this.selectedShape = null;
+                
+                                 this.setupEventListeners();
+                 this.loadShapesLibrary();
+                 this.refreshView();
+                 this.setupAxes();
+            }
+            
+            async refreshView() {
+                try {
+                    this.updateStatus('Rendering view...');
+                    
+                                    // Debug logging
+                console.log('=== FRONTEND REFRESH DEBUG ===');
+                console.log('Panel dimensions:', { width: this.panelWidth, height: this.panelHeight });
+                console.log('Placed shapes:', this.placedShapes);
+                console.log('Zoom level:', this.zoomLevel);
+                
+                // Build URL with current state
+                const params = new URLSearchParams({
+                    panel_width: this.panelWidth,
+                    panel_height: this.panelHeight,
+                    zoom: this.zoomLevel,
+                    placed_shapes: JSON.stringify(this.placedShapes)
+                });
+                    
+                    const response = await fetch(`/cad/api/render-brep/?${params}`);
+                    const data = await response.json();
+                    
+                                         if (response.ok && data.success) {
+                         this.occImage.src = data.image;
+                         this.updateStatus(`View updated successfully (Zoom: ${(this.zoomLevel * 100).toFixed(0)}%)`);
+                         this.updateAxes();
+                     } else {
+                         this.updateStatus(`Error rendering view: ${data.error}`, 'error');
+                     }
+                } catch (error) {
+                    this.updateStatus(`Error refreshing view: ${error.message}`, 'error');
+                }
+            }
+            
+            async zoomView(zoomType) {
+                switch (zoomType) {
+                    case 'in':
+                        this.zoomLevel = Math.min(this.zoomLevel * 1.5, 5.0);
+                        break;
+                    case 'out':
+                        this.zoomLevel = Math.max(this.zoomLevel / 1.5, 0.1);
+                        break;
+                    case 'fit':
+                        this.zoomLevel = 0.8; // Default fit zoom
+                        break;
+                    case 'reset':
+                        this.zoomLevel = 1.0; // 100% zoom
+                        break;
+                }
+                
+                this.updateStatus(`Zoom level: ${(this.zoomLevel * 100).toFixed(0)}%`);
+                await this.refreshView();
+            }
+            
+            setupEventListeners() {
+                // Refresh view button
+                const refreshBtn = document.getElementById('refresh-view-btn');
+                
+                // Zoom control buttons
+                const zoomInBtn = document.getElementById('zoom-in-btn');
+                const zoomOutBtn = document.getElementById('zoom-out-btn');
+                const zoomFitBtn = document.getElementById('zoom-fit-btn');
+                const zoomResetBtn = document.getElementById('zoom-reset-btn');
+                
+                // Export buttons
+                const exportBrepBtn = document.getElementById('export-brep-btn');
+                const exportDxfBtn = document.getElementById('export-dxf-btn');
+                
+                // Shape library controls
+                const shapeTypeFilter = document.getElementById('shape-type-filter');
+                const shapeSelect = document.getElementById('shape-select');
+                const addShapeBtn = document.getElementById('add-shape-btn');
+                const clearAllBtn = document.getElementById('clear-all-btn');
+                const edgeSelect = document.getElementById('edge-select');
+                
+                // Refresh view button
+                refreshBtn.addEventListener('click', () => {
+                    this.refreshView();
+                });
+                
+                // Zoom control event listeners
+                zoomInBtn.addEventListener('click', () => {
+                    this.zoomView('in');
+                });
+                
+                zoomOutBtn.addEventListener('click', () => {
+                    this.zoomView('out');
+                });
+                
+                zoomFitBtn.addEventListener('click', () => {
+                    this.zoomView('fit');
+                });
+                
+                zoomResetBtn.addEventListener('click', () => {
+                    this.zoomView('reset');
+                });
+                
+                // Export BREP button
+                exportBrepBtn.addEventListener('click', () => {
+                    this.exportToBREP();
+                });
+                
+                // Export DXF button
+                exportDxfBtn.addEventListener('click', () => {
+                    this.exportToDXF();
+                });
+                
+                // Panel dimension controls
+                const updateDimensionsBtn = document.getElementById('update-dimensions-btn');
+                const panelWidthInput = document.getElementById('panel-width');
+                const panelHeightInput = document.getElementById('panel-height');
+                
+                updateDimensionsBtn.addEventListener('click', () => {
+                    this.updatePanelDimensions();
+                });
+                
+                // Allow Enter key to update dimensions
+                panelWidthInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        this.updatePanelDimensions();
+                    }
+                });
+                
+                panelHeightInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        this.updatePanelDimensions();
+                    }
+                });
+                
+                // Shape library event listeners
+                shapeTypeFilter.addEventListener('change', () => {
+                    this.filterShapesByType();
+                });
+                
+                shapeSelect.addEventListener('change', () => {
+                    this.onShapeSelect();
+                });
+                
+                addShapeBtn.addEventListener('click', () => {
+                    this.addSelectedShape();
+                });
+                
+                clearAllBtn.addEventListener('click', () => {
+                    this.clearAllShapes();
+                });
+                
+                edgeSelect.addEventListener('change', () => {
+                    this.updateEdgePositionLabel();
+                });
+            }
+            
+            async exportToDXF() {
+                try {
+                    this.updateStatus('Exporting to DXF...', 'info');
+                    
+                    const requestData = {
+                        shapes: [],
+                        panel_width: this.panelWidth,
+                        panel_height: this.panelHeight
+                    };
+                    
+                    const response = await fetch('/cad/api/export-dxf/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': this.getCSRFToken()
+                        },
+                        body: JSON.stringify(requestData)
+                    });
+                    
+                    if (response.ok) {
+                        // Create a download link for the DXF file
+                        const blob = await response.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'panel_layout.dxf';
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+                        
+                        this.updateStatus('DXF file exported successfully!', 'success');
+                    } else {
+                        const result = await response.json();
+                        this.updateStatus(`Error: ${result.error}`, 'error');
+                    }
+                } catch (error) {
+                    this.updateStatus(`Error exporting DXF: ${error.message}`, 'error');
+                }
+            }
+            
+            async exportToBREP() {
+                try {
+                    this.updateStatus('Exporting to BREP...', 'info');
+                    
+                    const requestData = {
+                        shapes: this.placedShapes,
+                        panel_width: this.panelWidth,
+                        panel_height: this.panelHeight
+                    };
+                    
+                    const response = await fetch('/cad/api/export-brep/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': this.getCSRFToken()
+                        },
+                        body: JSON.stringify(requestData)
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (response.ok && result.success) {
+                        this.updateStatus(`BREP file exported successfully: ${result.filename}`, 'success');
+                    } else {
+                        this.updateStatus(`Error exporting BREP: ${result.error}`, 'error');
+                    }
+                } catch (error) {
+                    this.updateStatus(`Error exporting BREP: ${error.message}`, 'error');
+                }
+            }
+                
+            getCSRFToken() {
+                // Get CSRF token from cookie
+                const name = 'csrftoken';
+                let cookieValue = null;
+                if (document.cookie && document.cookie !== '') {
+                    const cookies = document.cookie.split(';');
+                    for (let i = 0; i < cookies.length; i++) {
+                        const cookie = cookies[i].trim();
+                        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                            break;
+                        }
+                    }
+                }
+                return cookieValue;
+            }
+            
+            updateStatus(message, type = 'info') {
+                const statusDiv = document.getElementById('status');
+                statusDiv.textContent = message;
+                statusDiv.className = `status ${type}`;
+            }
+            
+            async loadShapesLibrary() {
+                try {
+                    const response = await fetch('/cad/api/shapes/');
+                    const data = await response.json();
+                    
+                    if (response.ok && data.success) {
+                        this.shapesLibrary = data.shapes;
+                        this.populateShapeSelect();
+                    } else {
+                        this.updateStatus('Error loading shapes library', 'error');
+                    }
+                } catch (error) {
+                    this.updateStatus(`Error loading shapes: ${error.message}`, 'error');
+                }
+            }
+            
+            populateShapeSelect() {
+                const shapeSelect = document.getElementById('shape-select');
+                const currentValue = shapeSelect.value;
+                
+                // Clear existing options
+                shapeSelect.innerHTML = '<option value="">-- Choose a shape --</option>';
+                
+                // Add shapes
+                this.shapesLibrary.forEach(shape => {
+                    const option = document.createElement('option');
+                    option.value = shape.id;
+                    option.textContent = `${shape.name} (${shape.shape_type})`;
+                    shapeSelect.appendChild(option);
+                });
+                
+                // Restore selection if possible
+                if (currentValue) {
+                    shapeSelect.value = currentValue;
+                }
+            }
+            
+            filterShapesByType() {
+                const shapeTypeFilter = document.getElementById('shape-type-filter');
+                const selectedType = shapeTypeFilter.value;
+                
+                if (selectedType) {
+                    this.shapesLibrary = this.shapesLibrary.filter(shape => shape.shape_type === selectedType);
+                } else {
+                    // Reload all shapes
+                    this.loadShapesLibrary();
+                    return;
+                }
+                
+                this.populateShapeSelect();
+            }
+            
+            onShapeSelect() {
+                const shapeSelect = document.getElementById('shape-select');
+                const shapeId = shapeSelect.value;
+                
+                if (!shapeId) {
+                    this.selectedShape = null;
+                    this.hidePlacementControls();
+                    return;
+                }
+                
+                this.selectedShape = this.shapesLibrary.find(shape => shape.id === shapeId);
+                if (this.selectedShape) {
+                    this.showShapeInfo();
+                    this.showPlacementControls();
+                }
+            }
+            
+            showShapeInfo() {
+                const shapeInfo = document.getElementById('shape-info');
+                const shapeTypeDisplay = document.getElementById('shape-type-display');
+                const shapeSizeDisplay = document.getElementById('shape-size-display');
+                
+                shapeTypeDisplay.textContent = this.selectedShape.shape_type === 'internal_cutout' ? 'Internal Cutout' : 'Edge Affecting';
+                shapeSizeDisplay.textContent = `${this.selectedShape.bbox_w_mm} × ${this.selectedShape.bbox_h_mm} mm`;
+                
+                shapeInfo.style.display = 'block';
+            }
+            
+            showPlacementControls() {
+                const placementControls = document.getElementById('placement-controls');
+                const internalControls = document.getElementById('internal-controls');
+                const edgeControls = document.getElementById('edge-controls');
+                
+                placementControls.style.display = 'block';
+                
+                if (this.selectedShape.shape_type === 'internal_cutout') {
+                    internalControls.style.display = 'block';
+                    edgeControls.style.display = 'none';
+                } else {
+                    internalControls.style.display = 'none';
+                    edgeControls.style.display = 'block';
+                    this.updateEdgePositionLabel();
+                }
+            }
+            
+            hidePlacementControls() {
+                const placementControls = document.getElementById('placement-controls');
+                const shapeInfo = document.getElementById('shape-info');
+                
+                placementControls.style.display = 'none';
+                shapeInfo.style.display = 'none';
+            }
+            
+                         updateEdgePositionLabel() {
+                 const edgeSelect = document.getElementById('edge-select');
+                 const edgePositionInput = document.getElementById('edge-position-input');
+                 const label = edgePositionInput.querySelector('label');
+                 const positionInput = document.getElementById('edge-position');
+                 
+                 const edge = edgeSelect.value;
+                 if (edge === 'Left' || edge === 'Right') {
+                     label.textContent = 'Position (from top):';
+                     positionInput.max = this.panelHeight;
+                     positionInput.placeholder = `0-${this.panelHeight}mm`;
+                 } else {
+                     label.textContent = 'Position (from left):';
+                     positionInput.max = this.panelWidth;
+                     positionInput.placeholder = `0-${this.panelWidth}mm`;
+                 }
+             }
+            
+            updatePanelDimensions() {
+                const newWidth = parseFloat(document.getElementById('panel-width').value);
+                const newHeight = parseFloat(document.getElementById('panel-height').value);
+                
+                // Validate dimensions
+                if (isNaN(newWidth) || isNaN(newHeight)) {
+                    this.updateStatus('Please enter valid dimensions', 'error');
+                    return;
+                }
+                
+                if (newWidth < 100 || newWidth > 5000 || newHeight < 100 || newHeight > 5000) {
+                    this.updateStatus('Dimensions must be between 100mm and 5000mm', 'error');
+                    return;
+                }
+                
+                // Check if there are existing shapes and warn user
+                if (this.placedShapes.length > 0) {
+                    if (!confirm(`Changing panel dimensions will clear all ${this.placedShapes.length} placed shapes. Continue?`)) {
+                        return;
+                    }
+                }
+                
+                // Update panel dimensions
+                this.panelWidth = newWidth;
+                this.panelHeight = newHeight;
+                
+                // Clear all placed shapes since they might be invalid with new dimensions
+                this.placedShapes = [];
+                this.updatePlacedShapesList();
+                
+                this.updateStatus(`Panel dimensions updated to ${newWidth}mm × ${newHeight}mm - all shapes cleared`);
+                
+                                 // Update the panel info display
+                 this.updatePanelInfoDisplay();
+                 
+                 // Update edge position validation if edge controls are visible
+                 if (this.selectedShape && this.selectedShape.shape_type === 'edge_affecting') {
+                     this.updateEdgePositionLabel();
+                 }
+                 
+                 // Refresh the view with new dimensions
+                 this.refreshView();
+            }
+            
+            updatePanelInfoDisplay() {
+                const panelInfo = document.querySelector('.panel-info p:first-of-type');
+                const panelArea = this.panelWidth * this.panelHeight;
+                
+                if (panelInfo) {
+                    panelInfo.innerHTML = `<strong>Dimensions:</strong> ${this.panelWidth}mm × ${this.panelHeight}mm`;
+                }
+                
+                const areaInfo = document.querySelector('.panel-info p:last-of-type');
+                if (areaInfo) {
+                    areaInfo.innerHTML = `<strong>Area:</strong> ${panelArea.toLocaleString()}mm²`;
+                }
+            }
+            
+                         addSelectedShape() {
+                 if (!this.selectedShape) return;
+                 
+                 let x, y, angle_deg;
+                 
+                 if (this.selectedShape.shape_type === 'internal_cutout') {
+                     // Internal shape - user provides x and y
+                     x = parseFloat(document.getElementById('internal-x').value);
+                     y = parseFloat(document.getElementById('internal-y').value);
+                     angle_deg = 0;
+                     
+                     if (isNaN(x) || isNaN(y)) {
+                         this.updateStatus('Please enter valid X and Y positions', 'error');
+                         return;
+                     }
+                 } else {
+                     // Edge shape - calculate position based on edge
+                     const edge = document.getElementById('edge-select').value;
+                     const position = parseFloat(document.getElementById('edge-position').value);
+                     
+                     if (isNaN(position)) {
+                         this.updateStatus('Please enter a valid position', 'error');
+                         return;
+                     }
+                     
+                     // Validate position based on edge type
+                     if (edge === 'Left' || edge === 'Right') {
+                         // For left/right edges, position is from top (Y coordinate)
+                         if (position < 0 || position > this.panelHeight) {
+                             this.updateStatus(`Position must be between 0 and ${this.panelHeight}mm for ${edge} edge`, 'error');
+                             return;
+                         }
+                     } else {
+                         // For top/bottom edges, position is from left (X coordinate)
+                         if (position < 0 || position > this.panelWidth) {
+                             this.updateStatus(`Position must be between 0 and ${this.panelWidth}mm for ${edge} edge`, 'error');
+                             return;
+                         }
+                     }
+                     
+                                           // Get rotation from input field
+                      const rotation = parseFloat(document.getElementById('edge-rotation').value) || 0;
+                      
+                      // Calculate position based on edge
+                      switch (edge) {
+                          case 'Left':
+                              x = 0;
+                              y = position;
+                              angle_deg = rotation;
+                              break;
+                          case 'Right':
+                              x = this.panelWidth - this.selectedShape.bbox_w_mm;
+                              y = position;
+                              angle_deg = rotation;
+                              break;
+                          case 'Top':
+                              x = position;
+                              y = this.panelHeight - this.selectedShape.bbox_h_mm;
+                              angle_deg = rotation;
+                              break;
+                          case 'Bottom':
+                              x = position;
+                              y = 0;
+                              angle_deg = rotation;
+                              break;
+                      }
+                 }
+                
+                // Check for duplicate shapes
+                const isDuplicate = this.placedShapes.some(shape => 
+                    shape.shape_id === this.selectedShape.id &&
+                    shape.x === x &&
+                    shape.y === y &&
+                    shape.angle_deg === angle_deg
+                );
+                
+                if (isDuplicate) {
+                    this.updateStatus('This shape is already placed at this position', 'error');
+                    return;
+                }
+                
+                // Add shape to placed shapes
+                const placedShape = {
+                    shape_id: this.selectedShape.id,
+                    shape_type: this.selectedShape.shape_type,
+                    name: this.selectedShape.name,
+                    x: x,
+                    y: y,
+                    angle_deg: angle_deg
+                };
+                
+                this.placedShapes.push(placedShape);
+                this.updatePlacedShapesList();
+                this.refreshView();
+                
+                this.updateStatus(`Added ${this.selectedShape.name} to panel`, 'success');
+            }
+            
+            updatePlacedShapesList() {
+                const placedShapesList = document.getElementById('placed-shapes-list');
+                
+                if (this.placedShapes.length === 0) {
+                    placedShapesList.innerHTML = '<p>No shapes placed yet.</p>';
+                    return;
+                }
+                
+                placedShapesList.innerHTML = '';
+                this.placedShapes.forEach((shape, index) => {
+                    const item = document.createElement('div');
+                    item.className = 'placed-shape-item';
+                    item.innerHTML = `
+                        <strong>${shape.name}</strong> (${shape.shape_type})<br>
+                        Position: (${shape.x}, ${shape.y}) | Angle: ${shape.angle_deg}°
+                        <button class="btn btn-secondary" style="float: right; padding: 2px 8px; font-size: 12px;" 
+                                onclick="cadViewer.removeShape(${index})">Remove</button>
+                    `;
+                    placedShapesList.appendChild(item);
+                });
+            }
+            
+            removeShape(index) {
+                this.placedShapes.splice(index, 1);
+                this.updatePlacedShapesList();
+                this.refreshView();
+                this.updateStatus('Shape removed from panel', 'success');
+            }
+            
+                         clearAllShapes() {
+                 this.placedShapes = [];
+                 this.updatePlacedShapesList();
+                 this.refreshView();
+                 this.updateStatus('All shapes cleared from panel', 'success');
+             }
+             
+                          setupAxes() {
+                 this.xAxis = document.getElementById('x-axis');
+                 this.yAxis = document.getElementById('y-axis');
+                 this.updateAxes();
+             }
+             
+                           updateAxes() {
+                  if (!this.xAxis || !this.yAxis) return;
+                  
+                  // Clear existing axes
+                  this.xAxis.innerHTML = '';
+                  this.yAxis.innerHTML = '';
+                  
+                  // Get image dimensions
+                  const img = this.occImage;
+                  if (!img.complete || !img.naturalWidth) {
+                      // Image not loaded yet, try again in a moment
+                      setTimeout(() => this.updateAxes(), 100);
+                      return;
+                  }
+                  
+                  const imgRect = img.getBoundingClientRect();
+                  const axisContainer = img.parentElement.parentElement;
+                  const containerRect = axisContainer.getBoundingClientRect();
+                  
+                  // Calculate scale factors
+                  const scaleX = imgRect.width / this.panelWidth;
+                  const scaleY = imgRect.height / this.panelHeight;
+                  
+                  // Create axis lines
+                  const xAxisLine = document.createElement('div');
+                  xAxisLine.className = 'axis-line x-axis';
+                  this.xAxis.appendChild(xAxisLine);
+                  
+                  const yAxisLine = document.createElement('div');
+                  yAxisLine.className = 'axis-line y-axis';
+                  this.yAxis.appendChild(yAxisLine);
+                  
+                                     // Tick spacing
+                   const tickSpacing = 100; // Every 100mm
+                   
+                   // Create X-axis ticks
+                   for (let x = 0; x <= this.panelWidth; x += tickSpacing) {
+                       const pixelX = (x * scaleX);
+                       
+                       const tick = document.createElement('div');
+                       tick.className = 'tick-mark x-axis';
+                       tick.style.left = pixelX + 'px';
+                       this.xAxis.appendChild(tick);
+                       
+                       // Add label for all ticks (except 0)
+                       if (x > 0) {
+                           const label = document.createElement('div');
+                           label.className = 'tick-label x-axis';
+                           label.textContent = x + 'mm';
+                           label.style.left = pixelX + 'px';
+                           // Ensure labels don't go too far left
+                           if (pixelX < 30) {
+                               label.style.left = '30px';
+                               label.style.transform = 'translateX(0)';
+                           }
+                           this.xAxis.appendChild(label);
+                       }
+                   }
+                   
+                   // Create Y-axis ticks
+                   for (let y = 0; y <= this.panelHeight; y += tickSpacing) {
+                       const pixelY = (y * scaleY);
+                       
+                       const tick = document.createElement('div');
+                       tick.className = 'tick-mark y-axis';
+                       tick.style.top = pixelY + 'px';
+                       this.yAxis.appendChild(tick);
+                       
+                       // Add label for all ticks (except 0)
+                       if (y > 0) {
+                           const label = document.createElement('div');
+                           label.className = 'tick-label y-axis';
+                           label.textContent = y + 'mm';
+                           label.style.top = pixelY + 'px';
+                           this.yAxis.appendChild(label);
+                       }
+                   }
+              }
+        }
+        
+        // Initialize the CAD viewer when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new CADViewer();
+        });
+    </script>
+</body>
+</html>

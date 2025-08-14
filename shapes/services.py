@@ -169,7 +169,11 @@ def build_face_from_wire(wire: Any) -> Any:
 
 
 def canonicalize_to_xoy(face: Any) -> Any:
-    """Canonicalize the face to XOY plane.
+    """Canonicalize the face to XOY plane and normalize to origin.
+    
+    This function:
+    1. Ensures the face is on the XOY plane
+    2. Normalizes the face so its bottom-left corner is at (0,0)
     
     Parameters
     ----------
@@ -179,13 +183,15 @@ def canonicalize_to_xoy(face: Any) -> Any:
     Returns
     -------
     TopoDS_Face
-        The canonicalized face on XOY plane
+        The canonicalized face on XOY plane with bottom-left at (0,0)
     """
     try:
         from OCC.Core.BRepAdaptor import BRepAdaptor_Surface
-        from OCC.Core.gp import gp_Pln, gp_Pnt, gp_Dir, gp_Trsf, gp_Ax3
+        from OCC.Core.gp import gp_Pln, gp_Pnt, gp_Dir, gp_Trsf, gp_Vec
         from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
         from OCC.Core.GeomAbs import GeomAbs_Plane
+        from OCC.Core.Bnd import Bnd_Box
+        from OCC.Core.BRepBndLib import brepbndlib_Add
         
         # Get the surface
         surface = BRepAdaptor_Surface(face)
@@ -198,7 +204,6 @@ def canonicalize_to_xoy(face: Any) -> Any:
         direction = plane.Axis().Direction()
         
         # Create transformation to align with XOY
-        # This is a simplified approach - in practice you'd want more robust alignment
         transform = gp_Trsf()
         
         # If the plane is not already on XOY, we need to transform it
@@ -207,10 +212,41 @@ def canonicalize_to_xoy(face: Any) -> Any:
             # This is a simplified transformation
             pass
         
-        # Apply transformation
+        # Apply transformation to get face on XOY plane
         transformer = BRepBuilderAPI_Transform(face, transform, True)
         if transformer.IsDone():
-            return transformer.Shape()
+            face = transformer.Shape()
+        
+        # Now normalize the face to have bottom-left at (0,0)
+        # Get the bounding box of the face
+        bbox = Bnd_Box()
+        brepbndlib_Add(face, bbox)
+        xmin, ymin, zmin, xmax, ymax, zmax = bbox.Get()
+        
+        print(f"Original face bounds: X({xmin:.1f}, {xmax:.1f}), Y({ymin:.1f}, {ymax:.1f})")
+        
+        # Calculate translation to move bottom-left to (0,0)
+        translate_x = -xmin
+        translate_y = -ymin
+        
+        print(f"Normalizing face: translating by ({translate_x:.1f}, {translate_y:.1f})")
+        
+        # Create translation transformation
+        normalize_transform = gp_Trsf()
+        normalize_transform.SetTranslation(gp_Vec(translate_x, translate_y, 0))
+        
+        # Apply normalization transformation
+        normalizer = BRepBuilderAPI_Transform(face, normalize_transform, True)
+        if normalizer.IsDone():
+            normalized_face = normalizer.Shape()
+            
+            # Verify the normalization worked
+            bbox_normalized = Bnd_Box()
+            brepbndlib_Add(normalized_face, bbox_normalized)
+            nxmin, nymin, nzmin, nxmax, nymax, nzmax = bbox_normalized.Get()
+            print(f"Normalized face bounds: X({nxmin:.1f}, {nxmax:.1f}), Y({nymin:.1f}, {nymax:.1f})")
+            
+            return normalized_face
         
         return face
         
@@ -302,6 +338,110 @@ def save_brep_file(face: Any, brep_path: str | Path) -> None:
             
     except Exception as e:
         raise RuntimeError(f"Error saving BREP file: {e}")
+
+
+def brep_face_to_svg_path(face: Any) -> str:
+    """Convert a BREP face to SVG path data.
+    
+    Parameters
+    ----------
+    face: TopoDS_Face
+        The face to convert
+        
+    Returns
+    -------
+    str
+        SVG path data string
+    """
+    try:
+        from OCC.Core.BRepTools import BRepTools_WireExplorer
+        from OCC.Core.BRepAdaptor import BRepAdaptor_Curve
+        from OCC.Core.GeomAbs import GeomAbs_Line, GeomAbs_Circle
+        from OCC.Core.gp import gp_Pnt
+        
+        # Extract the outer wire of the face
+        wire_explorer = BRepTools_WireExplorer(face)
+        
+        if not wire_explorer.More():
+            # Fallback to bounding box if no wires found
+            bbox = compute_shape_properties(face)
+            width = bbox['bbox_w_mm']
+            height = bbox['bbox_h_mm']
+            return f"M 0 0 L {width} 0 L {width} {height} L 0 {height} Z"
+        
+        # Get the outer wire
+        outer_wire = wire_explorer.Current()
+        
+        # Build SVG path from wire edges
+        path_data = ""
+        edge_explorer = BRepTools_WireExplorer(outer_wire)
+        
+        while edge_explorer.More():
+            edge = edge_explorer.Current()
+            curve_adaptor = BRepAdaptor_Curve(edge)
+            curve_type = curve_adaptor.GetType()
+            
+            # Get start and end points
+            start_point = curve_adaptor.Value(curve_adaptor.FirstParameter())
+            end_point = curve_adaptor.Value(curve_adaptor.LastParameter())
+            
+            if curve_type == GeomAbs_Line:
+                # Line segment
+                if path_data == "":
+                    path_data = f"M {start_point.X():.3f} {start_point.Y():.3f}"
+                path_data += f" L {end_point.X():.3f} {end_point.Y():.3f}"
+            
+            elif curve_type == GeomAbs_Circle:
+                # Circle/Arc segment - handle properly
+                circle = curve_adaptor.Circle()
+                center = circle.Location()
+                radius = circle.Radius()
+                
+                # Check if it's a full circle
+                if abs(curve_adaptor.LastParameter() - curve_adaptor.FirstParameter() - 2*math.pi) < 0.001:
+                    # Full circle - use SVG circle element approach
+                    if path_data == "":
+                        # For full circle, we can use a different approach
+                        # Create a circular path using SVG arc commands
+                        path_data = f"M {center.X() + radius:.3f} {center.Y():.3f}"
+                        path_data += f" A {radius:.3f} {radius:.3f} 0 1 1 {center.X() - radius:.3f} {center.Y():.3f}"
+                        path_data += f" A {radius:.3f} {radius:.3f} 0 1 1 {center.X() + radius:.3f} {center.Y():.3f}"
+                else:
+                    # Partial arc - use SVG arc command
+                    if path_data == "":
+                        path_data = f"M {start_point.X():.3f} {start_point.Y():.3f}"
+                    
+                    # Determine sweep flag based on arc direction
+                    # This is a simplified approach - in practice you'd need more sophisticated arc analysis
+                    sweep_flag = 1 if curve_adaptor.LastParameter() > curve_adaptor.FirstParameter() else 0
+                    large_arc_flag = 1 if abs(curve_adaptor.LastParameter() - curve_adaptor.FirstParameter()) > math.pi else 0
+                    
+                    path_data += f" A {radius:.3f} {radius:.3f} 0 {large_arc_flag} {sweep_flag} {end_point.X():.3f} {end_point.Y():.3f}"
+            
+            else:
+                # Other curve types - approximate as line
+                if path_data == "":
+                    path_data = f"M {start_point.X():.3f} {start_point.Y():.3f}"
+                path_data += f" L {end_point.X():.3f} {end_point.Y():.3f}"
+            
+            edge_explorer.Next()
+        
+        # Close the path
+        if path_data != "":
+            path_data += " Z"
+        
+        return path_data
+        
+    except Exception as e:
+        print(f"Error converting face to SVG path: {e}")
+        # Fallback to bounding box
+        try:
+            bbox = compute_shape_properties(face)
+            width = bbox['bbox_w_mm']
+            height = bbox['bbox_h_mm']
+            return f"M 0 0 L {width} 0 L {width} {height} L 0 {height} Z"
+        except:
+            return ""
 
 
 def generate_preview_svg(face: Any, svg_path: str | Path, width: float = 200, height: float = 150) -> None:
@@ -442,6 +582,229 @@ def generate_preview_svg(face: Any, svg_path: str | Path, width: float = 200, he
         raise RuntimeError(f"Error generating preview SVG: {e}")
 
 
+def boolean_union(face1: Any, face2: Any) -> Any:
+    """Perform Boolean union operation between two faces.
+    
+    Parameters
+    ----------
+    face1: TopoDS_Face
+        First face
+    face2: TopoDS_Face
+        Second face
+        
+    Returns
+    -------
+    TopoDS_Face
+        Resulting face from union operation
+    """
+    try:
+        from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Fuse
+        from OCC.Core.ShapeFix import ShapeFix_Shape
+        
+        print("Performing Boolean union...")
+        
+        # Perform union operation
+        fuse_op = BRepAlgoAPI_Fuse(face1, face2)
+        if not fuse_op.IsDone():
+            raise RuntimeError("Boolean union operation failed")
+        
+        result_shape = fuse_op.Shape()
+        
+        # Heal and simplify the result
+        result_shape = heal_and_simplify(result_shape)
+        
+        # Extract the resulting face
+        from OCC.Core.TopoDS import TopoDS_Face
+        if isinstance(result_shape, TopoDS_Face):
+            return result_shape
+        else:
+            # If result is not a face, try to extract a face from it
+            return extract_planar_face(result_shape)
+            
+    except Exception as e:
+        raise RuntimeError(f"Error in Boolean union: {e}")
+
+
+def boolean_intersection(face1: Any, face2: Any) -> Any:
+    """Perform Boolean intersection operation between two faces.
+    
+    Parameters
+    ----------
+    face1: TopoDS_Face
+        First face
+    face2: TopoDS_Face
+        Second face
+        
+    Returns
+    -------
+    TopoDS_Face or None
+        Resulting face from intersection operation, None if no intersection
+    """
+    try:
+        from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Common
+        
+        print("Performing Boolean intersection...")
+        
+        # Perform intersection operation
+        common_op = BRepAlgoAPI_Common(face1, face2)
+        if not common_op.IsDone():
+            raise RuntimeError("Boolean intersection operation failed")
+        
+        result_shape = common_op.Shape()
+        
+        # Check if there's actually an intersection
+        if result_shape.IsNull():
+            print("No intersection found")
+            return None
+        
+        # Heal and simplify the result
+        result_shape = heal_and_simplify(result_shape)
+        
+        # Extract the resulting face
+        from OCC.Core.TopoDS import TopoDS_Face
+        if isinstance(result_shape, TopoDS_Face):
+            return result_shape
+        else:
+            # If result is not a face, try to extract a face from it
+            return extract_planar_face(result_shape)
+            
+    except Exception as e:
+        raise RuntimeError(f"Error in Boolean intersection: {e}")
+
+
+def boolean_difference(face1: Any, face2: Any) -> Any:
+    """Perform Boolean difference operation (face1 - face2).
+    
+    Parameters
+    ----------
+    face1: TopoDS_Face
+        Face to subtract from
+    face2: TopoDS_Face
+        Face to subtract
+        
+    Returns
+    -------
+    TopoDS_Face or None
+        Resulting face from difference operation, None if nothing remains
+    """
+    try:
+        from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Cut
+        
+        print("Performing Boolean difference...")
+        
+        # Perform difference operation
+        cut_op = BRepAlgoAPI_Cut(face1, face2)
+        if not cut_op.IsDone():
+            raise RuntimeError("Boolean difference operation failed")
+        
+        result_shape = cut_op.Shape()
+        
+        # Check if there's anything left
+        if result_shape.IsNull():
+            print("Nothing remains after difference operation")
+            return None
+        
+        # Heal and simplify the result
+        result_shape = heal_and_simplify(result_shape)
+        
+        # Extract the resulting face
+        from OCC.Core.TopoDS import TopoDS_Face
+        if isinstance(result_shape, TopoDS_Face):
+            return result_shape
+        else:
+            # If result is not a face, try to extract a face from it
+            return extract_planar_face(result_shape)
+            
+    except Exception as e:
+        raise RuntimeError(f"Error in Boolean difference: {e}")
+
+
+def create_panel_face(width_mm: float, height_mm: float) -> Any:
+    """Create a rectangular panel face.
+    
+    Parameters
+    ----------
+    width_mm: float
+        Panel width in mm
+    height_mm: float
+        Panel height in mm
+        
+    Returns
+    -------
+    TopoDS_Face
+        Rectangular panel face
+    """
+    try:
+        from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeFace
+        from OCC.Core.gp import gp_Pln, gp_Pnt, gp_Dir
+        
+        print(f"Creating panel face: {width_mm}×{height_mm}mm")
+        
+        # Create a plane at origin (XY plane)
+        plane = gp_Pln(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1))
+        
+        # Create a rectangular face using BRepBuilderAPI_MakeFace with bounds
+        face_maker = BRepBuilderAPI_MakeFace(plane, 0, width_mm, 0, height_mm)
+        
+        if face_maker.IsDone():
+            return face_maker.Face()
+        else:
+            raise RuntimeError("Failed to create panel face")
+        
+    except Exception as e:
+        raise RuntimeError(f"Error creating panel face: {e}")
+
+
+def heal_and_simplify(shape: Any) -> Any:
+    """Heal and simplify a shape after Boolean operations.
+    
+    Parameters
+    ----------
+    shape: OCC shape
+        Shape to heal
+        
+    Returns
+    -------
+    OCC shape
+        Healed and simplified shape
+    """
+    try:
+        from OCC.Core.ShapeFix import ShapeFix_Shape
+        from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Sewing
+        
+        print("Healing and simplifying shape...")
+        
+        # Use ShapeFix to heal the shape
+        shape_fix = ShapeFix_Shape(shape)
+        shape_fix.Perform()
+        
+        if shape_fix.Status(ShapeFix_Shape.Status_DONE):
+            healed_shape = shape_fix.Shape()
+        else:
+            print("ShapeFix failed, using original shape")
+            healed_shape = shape
+        
+        # Use BRepBuilderAPI_Sewing for additional healing if needed
+        # This is especially useful for shells and compounds
+        try:
+            sewing = BRepBuilderAPI_Sewing()
+            sewing.Add(healed_shape)
+            sewing.Perform()
+            
+            if sewing.IsDone():
+                sewn_shape = sewing.SewedShape()
+                if not sewn_shape.IsNull():
+                    healed_shape = sewn_shape
+        except:
+            print("Sewing failed, using ShapeFix result")
+        
+        return healed_shape
+        
+    except Exception as e:
+        print(f"Error in heal_and_simplify: {e}")
+        return shape
+
+
 def process_shape_asset(shape_asset: ShapeAsset) -> None:
     """Process a ShapeAsset through the complete import pipeline.
     
@@ -531,3 +894,108 @@ def process_shape_asset(shape_asset: ShapeAsset) -> None:
         print("Full traceback:")
         print(traceback.format_exc())
         raise RuntimeError(f"Failed to process shape: {e}")
+
+
+def export_panel_to_dxf(panel: 'Panel2D') -> str:
+    """Export panel layout to DXF format using existing Panel2D instance.
+    
+    Parameters
+    ----------
+    panel: Panel2D
+        The panel instance with all shapes already added
+        
+    Returns
+    -------
+    str
+        DXF file content as string
+    """
+    try:
+        import ezdxf
+        import math
+        
+        # Create a new DXF document
+        doc = ezdxf.new('R2010')  # AutoCAD 2010 format
+        msp = doc.modelspace()
+        
+        # Get the final panel shape with all cuts
+        panel_shape = panel.as_shape()
+        
+        # Convert the panel shape to DXF
+        from OCC.Core.TopExp import TopExp_Explorer
+        from OCC.Core.TopAbs import TopAbs_WIRE, TopAbs_EDGE
+        from OCC.Core.BRepAdaptor import BRepAdaptor_Curve
+        from OCC.Core.GeomAbs import GeomAbs_Line, GeomAbs_Circle
+        
+        # Extract all wires from the panel shape
+        wire_explorer = TopExp_Explorer(panel_shape, TopAbs_WIRE)
+        
+        while wire_explorer.More():
+            wire = wire_explorer.Current()
+            
+            # Extract edges from the wire
+            edge_explorer = TopExp_Explorer(wire, TopAbs_EDGE)
+            
+            points = []
+            while edge_explorer.More():
+                edge = edge_explorer.Current()
+                
+                # Use BRepAdaptor_Curve to get points from the edge
+                try:
+                    curve_adaptor = BRepAdaptor_Curve(edge)
+                    
+                    # Get start and end points
+                    start_point = curve_adaptor.Value(curve_adaptor.FirstParameter())
+                    end_point = curve_adaptor.Value(curve_adaptor.LastParameter())
+                    
+                    points.append((start_point.X(), start_point.Y()))
+                    points.append((end_point.X(), end_point.Y()))
+                    
+                except Exception as e:
+                    print(f"Warning: Could not process edge: {e}")
+                    continue
+                
+                edge_explorer.Next()
+            
+            if points:
+                # Remove duplicate consecutive points
+                unique_points = []
+                for i, point in enumerate(points):
+                    if i == 0 or point != points[i-1]:
+                        unique_points.append(point)
+                
+                if len(unique_points) > 1:
+                    msp.add_lwpolyline(unique_points)
+            
+            wire_explorer.Next()
+        
+        # Export to string - use the correct method for newer ezdxf versions
+        from io import StringIO
+        stream = StringIO()
+        doc.write(stream)
+        return stream.getvalue()
+        
+    except Exception as e:
+        raise RuntimeError(f"Error exporting to DXF: {e}")
+
+
+def export_panel_to_brep(panel: 'Panel2D', path: str) -> None:
+    """Export panel layout to BREP format.
+    
+    Parameters
+    ----------
+    panel: Panel2D
+        The panel instance with all shapes already added
+    path: str
+        Path where to save the BREP file
+        
+    Raises
+    ------
+    RuntimeError
+        If the BREP file cannot be written
+    """
+    try:
+        # Use the Panel2D's built-in save_brep method
+        panel.save_brep(path)
+        
+    except Exception as e:
+        raise RuntimeError(f"Error exporting to BREP: {e}")

@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     "upload_FCStd",
     "edit_OCC",
     "shapes",
+    "cad_viewer",
 ]
 
 MIDDLEWARE = [
