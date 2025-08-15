@@ -3,7 +3,8 @@ from django.http import JsonResponse
 from shapes.models import ShapeAsset
 import json
 from shapes.services import (
-    export_panel_to_dxf
+    export_panel_to_dxf,
+    export_panel_to_pdf
 )
 from panel2d import Panel2D
 from django.views.decorators.csrf import csrf_exempt
@@ -375,6 +376,66 @@ def export_to_brep(request):
             'filename': filename,
             'message': f'Panel exported to BREP file: {filename}'
         })
+
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500) 
+
+@csrf_exempt
+def export_to_pdf(request):
+    """Export panel layout to PDF format."""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Only POST method allowed'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        shapes_data = data.get('shapes', [])
+        panel_width = data.get('panel_width', 800)
+        panel_height = data.get('panel_height', 1900)
+        include_dimensions = data.get('include_dimensions', True)
+
+        # Create panel using Panel2D class (same as in other exports)
+        panel = Panel2D(width=panel_width, height=panel_height)
+        
+        # Add placed shapes to the panel
+        for shape_data in shapes_data:
+            try:
+                shape_id = shape_data.get('id')
+                shape_type = shape_data.get('shape_type')
+                x = float(shape_data.get('x', 0))
+                y = float(shape_data.get('y', 0))
+                angle_deg = float(shape_data.get('angle_deg', 0))
+                
+                # Get the shape from database
+                shape_asset = ShapeAsset.objects.get(id=shape_id)
+                
+                # Add shape to panel using the helper method
+                if shape_type == 'edge_affecting':
+                    # For edge-affecting shapes, pass edge and position instead of tx/ty
+                    edge = shape_data.get('edge')
+                    position = float(shape_data.get('position', 0))
+                    shape_asset.add_to_panel2d(panel, angle_deg=angle_deg, scale=1.0, edge=edge, position=position)
+                else:
+                    # For internal cutouts, use the original tx/ty approach
+                    shape_asset.add_to_panel2d(panel, tx=x, ty=y, angle_deg=angle_deg, scale=1.0)
+                
+            except Exception as e:
+                print(f"Error adding shape {shape_id}: {e}")
+                continue
+
+        # Generate PDF content using the new export function
+        pdf_content = export_panel_to_pdf(
+            panel=panel,
+            panel_width=panel_width,
+            panel_height=panel_height,
+            placed_shapes=shapes_data,
+            include_dimensions=include_dimensions
+        )
+
+        # Return as downloadable PDF file
+        from django.http import HttpResponse
+        response = HttpResponse(pdf_content, content_type='application/pdf')
+        response['Content-Disposition'] = 'attachment; filename="panel_layout.pdf"'
+        return response
 
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500) 

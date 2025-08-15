@@ -500,6 +500,7 @@
                 <h3>Export</h3>
                 <button class="btn btn-export" id="export-brep-btn">Export to BREP</button>
                 <button class="btn btn-export" id="export-dxf-btn">Export to DXF</button>
+                <button class="btn btn-export" id="export-pdf-btn">Export to PDF</button>
             </div>
             
             <div id="status" class="status info">
@@ -628,6 +629,7 @@
                 // Export buttons
                 const exportBrepBtn = document.getElementById('export-brep-btn');
                 const exportDxfBtn = document.getElementById('export-dxf-btn');
+                const exportPdfBtn = document.getElementById('export-pdf-btn');
                 
                 // Shape library controls
                 const shapeTypeFilter = document.getElementById('shape-type-filter');
@@ -666,6 +668,11 @@
                 // Export DXF button
                 exportDxfBtn.addEventListener('click', () => {
                     this.exportToDXF();
+                });
+                
+                // Export PDF button
+                exportPdfBtn.addEventListener('click', () => {
+                    this.exportToPDF();
                 });
                 
                 // Panel dimension controls
@@ -787,6 +794,48 @@
                     }
                 } catch (error) {
                     this.updateStatus(`Error exporting BREP: ${error.message}`, 'error');
+                }
+            }
+            
+            async exportToPDF() {
+                try {
+                    this.updateStatus('Exporting to PDF...', 'info');
+                    
+                    const requestData = {
+                        shapes: this.placedShapes,
+                        panel_width: this.panelWidth,
+                        panel_height: this.panelHeight,
+                        include_dimensions: document.getElementById('show-dimensions').checked
+                    };
+                    
+                    const response = await fetch('/cad/api/export-pdf/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': this.getCSRFToken()
+                        },
+                        body: JSON.stringify(requestData)
+                    });
+                    
+                    if (response.ok) {
+                        // Create a download link for the PDF file
+                        const blob = await response.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'panel_layout.pdf';
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+                        
+                        this.updateStatus('PDF file exported successfully!', 'success');
+                    } else {
+                        const result = await response.json();
+                        this.updateStatus(`Error: ${result.error}`, 'error');
+                    }
+                } catch (error) {
+                    this.updateStatus(`Error exporting PDF: ${error.message}`, 'error');
                 }
             }
                 

@@ -1006,3 +1006,195 @@ def export_panel_to_brep(panel: 'Panel2D', path: str) -> None:
         
     except Exception as e:
         raise RuntimeError(f"Error exporting to BREP: {e}")
+
+
+def export_panel_to_pdf(panel: 'Panel2D', panel_width: float, panel_height: float, 
+                        placed_shapes: list, include_dimensions: bool = True) -> bytes:
+    """Export panel layout to PDF format using high-resolution image conversion.
+    
+    Parameters
+    ----------
+    panel: Panel2D
+        The panel instance with all shapes already added
+    panel_width: float
+        Panel width in mm
+    panel_height: float
+        Panel height in mm
+    placed_shapes: list
+        List of placed shapes data for metadata
+    include_dimensions: bool
+        Whether to include dimension lines in the export
+        
+    Returns
+    -------
+    bytes
+        PDF file content as bytes
+        
+    Raises
+    ------
+    RuntimeError
+        If the PDF cannot be generated
+    """
+    try:
+        from reportlab.pdfgen import canvas
+        from reportlab.lib.pagesizes import A4, letter
+        from reportlab.lib.units import mm, inch
+        from reportlab.lib import colors
+        from reportlab.platypus import Image
+        from reportlab.lib.utils import ImageReader
+        import io
+        import base64
+        import tempfile
+        import os
+        from datetime import datetime
+        
+        # Generate high-resolution image using existing OCC rendering
+        # We'll reuse the logic from render_brep_view but with higher resolution
+        
+        # Set up OCC display for high-resolution rendering
+        import matplotlib
+        matplotlib.use('Agg')  # Use non-interactive backend
+        
+        try:
+            from OCC.Display.SimpleGui import init_display
+        except ImportError as e:
+            raise RuntimeError(f'OCC Display not available: {e}')
+        
+        # Initialize OCC display
+        display = None
+        for backend in ['qt-pyqt5', 'qt-pyside2', 'qt-pyqt4', 'wx']:
+            try:
+                display, start_display, add_menu, add_function_to_menu = init_display(size=(2400, 2400), backend=backend)
+                break
+            except:
+                continue
+        
+        if display is None:
+            # Fallback to default backend
+            display, start_display, add_menu, add_function_to_menu = init_display(size=(2400, 2400))
+        
+        # Get the final panel shape
+        panel_shape = panel.as_shape()
+        
+        # Display the shape
+        display.DisplayShape(panel_shape, color='lightblue', transparency=0.3)
+        
+        # Display dimensions if requested
+        if include_dimensions:
+            try:
+                # Set up dimension style
+                drawer = display.Context.DefaultDrawer()
+                drawer.SetDimLengthModelUnits("mm")
+                drawer.SetDimLengthDisplayUnits("mm")
+                
+                from OCC.Core.Prs3d import Prs3d_DimensionAspect
+                asp = Prs3d_DimensionAspect()
+                asp.MakeUnitsDisplayed(True)
+                asp.MakeText3d(False)
+                asp.TextAspect().SetHeight(48.0)  # Larger text for high-res
+                drawer.SetDimensionAspect(asp)
+                
+                # Create and display native dimensions
+                native_dims = panel.make_native_dimensions(include_cutouts=False, offset=50.0)
+                for dim in native_dims:
+                    display.Context.Display(dim, False)
+                    
+            except Exception as e:
+                print(f"Error displaying native dimensions: {e}")
+                # Fallback to custom dimension geometry
+                dimension_shapes = panel.get_dimension_geometry()
+                for i, dim_shape in enumerate(dimension_shapes):
+                    if i < 3:
+                        display.DisplayShape(dim_shape, color='red')
+                    elif i == 3:
+                        display.DisplayShape(dim_shape, color='yellow')
+                    else:
+                        display.DisplayShape(dim_shape, color='black')
+        
+        # Set view parameters for 2D view
+        display.View.SetProj(0, 0, 1)  # Top view (XY plane)
+        display.View.FitAll()
+        display.View.SetZoom(1.0)  # Full zoom for high resolution
+        
+        # Capture the view as high-resolution image
+        temp_dir = tempfile.gettempdir()
+        temp_file = os.path.join(temp_dir, f'temp_pdf_view_{os.getpid()}.png')
+        
+        try:
+            # Dump the view to the temporary file
+            display.View.Dump(temp_file)
+            
+            # Check if file was created and has content
+            if not os.path.exists(temp_file):
+                raise RuntimeError("Failed to create image file")
+            
+            file_size = os.path.getsize(temp_file)
+            if file_size == 0:
+                raise RuntimeError("Image file is empty")
+            
+            # Create PDF using ReportLab
+            pdf_buffer = io.BytesIO()
+            c = canvas.Canvas(pdf_buffer, pagesize=A4)
+            
+            # Calculate page dimensions
+            page_width, page_height = A4
+            margin = 20 * mm
+            content_width = page_width - 2 * margin
+            content_height = page_height - 2 * margin
+            
+            # Add title block
+            c.setFont("Helvetica-Bold", 16)
+            c.drawString(margin, page_height - margin - 20, "Panel Layout Drawing")
+            
+            c.setFont("Helvetica", 12)
+            c.drawString(margin, page_height - margin - 40, f"Panel Dimensions: {panel_width}mm × {panel_height}mm")
+            c.drawString(margin, page_height - margin - 55, f"Total Area: {panel_width * panel_height / 1000000:.2f} m²")
+            c.drawString(margin, page_height - margin - 70, f"Shapes Placed: {len(placed_shapes)}")
+            c.drawString(margin, page_height - margin - 85, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            
+            # Add the panel image
+            # Calculate image position and size to fit on page
+            img = ImageReader(temp_file)
+            img_width, img_height = img.getSize()
+            
+            # Calculate scale to fit image within content area
+            scale_x = content_width / img_width
+            scale_y = content_height / img_height
+            scale = min(scale_x, scale_y)
+            
+            # Calculate centered position
+            scaled_width = img_width * scale
+            scaled_height = img_height * scale
+            x_pos = margin + (content_width - scaled_width) / 2
+            y_pos = margin + (content_height - scaled_height) / 2
+            
+            # Add image to PDF
+            c.drawImage(temp_file, x_pos, y_pos, width=scaled_width, height=scaled_height)
+            
+            # Add scale information
+            c.setFont("Helvetica", 10)
+            c.drawString(margin, margin - 10, f"Scale: 1:{1/scale:.0f}")
+            c.drawString(margin, margin - 25, f"Image Resolution: {img_width}×{img_height} pixels")
+            
+            # Add footer
+            c.setFont("Helvetica", 8)
+            c.drawString(margin, margin - 40, "Generated by CPQ4 CAD Viewer")
+            
+            c.save()
+            
+            # Get PDF content
+            pdf_content = pdf_buffer.getvalue()
+            pdf_buffer.close()
+            
+            return pdf_content
+            
+        finally:
+            # Clean up the temporary file
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except:
+                    pass  # Ignore cleanup errors
+        
+    except Exception as e:
+        raise RuntimeError(f"Error exporting to PDF: {e}")
