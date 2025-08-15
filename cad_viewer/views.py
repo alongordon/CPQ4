@@ -72,6 +72,9 @@ def render_brep_view(request):
         except:
             placed_shapes = []
         
+        # Get dimension rendering option
+        include_dimensions = request.GET.get('include_dimensions', 'false').lower() == 'true'
+        
         # Create panel using Panel2D class
         panel = Panel2D(width=panel_width, height=panel_height)
         
@@ -154,6 +157,40 @@ def render_brep_view(request):
             
             # Display the shape
             display.DisplayShape(panel_shape, color='lightblue', transparency=0.3)
+            
+            # Display dimensions if requested
+            if include_dimensions:
+                # Use native OCC dimensions instead of custom geometry
+                try:
+                    # Set up dimension style and units
+                    drawer = display.Context.DefaultDrawer()
+                    drawer.SetDimLengthModelUnits("mm")
+                    drawer.SetDimLengthDisplayUnits("mm")
+                    
+                    from OCC.Core.Prs3d import Prs3d_DimensionAspect
+                    asp = Prs3d_DimensionAspect()
+                    asp.MakeUnitsDisplayed(True)
+                    asp.MakeText3d(False)  # Screen text
+                    asp.TextAspect().SetHeight(24.0)
+                    drawer.SetDimensionAspect(asp)
+                    
+                    # Create and display native dimensions
+                    native_dims = panel.make_native_dimensions(include_cutouts=False, offset=25.0)
+                    for dim in native_dims:
+                        display.Context.Display(dim, False)
+                        
+                except Exception as e:
+                    print(f"Error displaying native dimensions: {e}")
+                    # Fallback to custom dimension geometry
+                    dimension_shapes = panel.get_dimension_geometry()
+                    for i, dim_shape in enumerate(dimension_shapes):
+                        # Use consistent colors for all dimension components
+                        if i < 3:  # First 3 shapes are dimension lines and extension lines
+                            display.DisplayShape(dim_shape, color='red')
+                        elif i == 3:  # 4th shape is the text background rectangle
+                            display.DisplayShape(dim_shape, color='yellow')
+                        else:  # Remaining shapes are the character rectangles
+                            display.DisplayShape(dim_shape, color='black')
             
             # Set view parameters for 2D view
             display.View.SetProj(0, 0, 1)  # Top view (XY plane)

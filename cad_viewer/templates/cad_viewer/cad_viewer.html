@@ -78,6 +78,31 @@
             background: #138496;
         }
         
+        .dimension-controls {
+            margin-top: 20px;
+            padding: 15px;
+            background: #e9ecef;
+            border-radius: 5px;
+        }
+        
+        .dimension-controls h3 {
+            margin-top: 0;
+            margin-bottom: 10px;
+        }
+        
+        .dimension-controls label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: normal;
+            cursor: pointer;
+        }
+        
+        .dimension-controls input[type="checkbox"] {
+            margin: 0;
+            cursor: pointer;
+        }
+        
         .export-controls {
             margin-top: 20px;
             padding: 15px;
@@ -464,6 +489,13 @@
                 <button class="btn btn-secondary" id="clear-all-btn">Clear All</button>
             </div>
             
+            <div class="dimension-controls">
+                <h3>Dimensions</h3>
+                <label>
+                    <input type="checkbox" id="show-dimensions"> Show Panel Dimensions
+                </label>
+            </div>
+            
             <div class="export-controls">
                 <h3>Export</h3>
                 <button class="btn btn-export" id="export-brep-btn">Export to BREP</button>
@@ -544,7 +576,8 @@
                     panel_width: this.panelWidth,
                     panel_height: this.panelHeight,
                     zoom: this.zoomLevel,
-                    placed_shapes: JSON.stringify(this.placedShapes)
+                    placed_shapes: JSON.stringify(this.placedShapes),
+                    include_dimensions: document.getElementById('show-dimensions').checked
                 });
                     
                     const response = await fetch(`/cad/api/render-brep/?${params}`);
@@ -676,6 +709,12 @@
                 
                 edgeSelect.addEventListener('change', () => {
                     this.updateEdgePositionLabel();
+                });
+                
+                // Dimension controls
+                const showDimensionsCheckbox = document.getElementById('show-dimensions');
+                showDimensionsCheckbox.addEventListener('change', () => {
+                    this.refreshView();
                 });
             }
             

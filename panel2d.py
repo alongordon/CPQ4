@@ -3,12 +3,15 @@ from typing import List, Tuple
 import math
 
 from OCC.Core.gp import gp_Pnt, gp_Ax1, gp_Dir, gp_Trsf, gp_Vec, gp_Pln, gp_Ax3
-from OCC.Core.TopoDS import TopoDS_Shape, TopoDS_Face, TopoDS_Wire
+from OCC.Core.TopoDS import TopoDS_Shape, TopoDS_Face, TopoDS_Wire, TopoDS_Edge
 from OCC.Core.TopAbs import TopAbs_FACE, TopAbs_WIRE
 from OCC.Core.TopExp import TopExp_Explorer
 from OCC.Core.BRep import BRep_Builder
 from OCC.Core.BRepTools import breptools
-from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakePolygon, BRepBuilderAPI_Transform, BRepBuilderAPI_MakeFace
+from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakePolygon, BRepBuilderAPI_Transform, BRepBuilderAPI_MakeFace, BRepBuilderAPI_MakeEdge
+from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeVertex
+from OCC.Core.PrsDim import PrsDim_LengthDimension
+from OCC.Core.Prs3d import Prs3d_DimensionAspect
 from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Cut
 from OCC.Core.BRepGProp import brepgprop
 from OCC.Core.GProp import GProp_GProps
@@ -404,6 +407,131 @@ class Panel2D:
         except ImportError:
             print("OCC Display not available for interactive viewing")
 
+    def view_with_true_dimensions(self, dimension_style: str = "standard") -> None:
+        """View panel with dimension overlay using native OCC display."""
+        try:
+            from OCC.Display.SimpleGui import init_display
+            
+            # Get base panel shape
+            panel_shape = self.as_shape()
+            
+            # Create dimension geometry
+            dimension_shapes = self._create_panel_dimensions(dimension_style)
+            
+            # Initialize display
+            display, start_display, *_ = init_display()
+            
+            # Display base panel
+            display.DisplayShape(panel_shape, color='lightblue', transparency=0.3)
+            
+            # Display dimensions
+            for dim_shape in dimension_shapes:
+                display.DisplayShape(dim_shape, color='red')
+            
+            display.FitAll()
+            start_display()
+            
+        except ImportError:
+            print("OCC Display not available for dimension viewing")
+
+    def view_with_native_dimensions(self, include_cutouts: bool = True, offset: float = 20.0, 
+                                   units: str = "mm", show_units: bool = True) -> None:
+        """View panel with native OCC dimensions using PrsDim_LengthDimension."""
+        try:
+            from OCC.Display.SimpleGui import init_display
+            
+            # Initialize display
+            display, start_display, *_ = init_display()
+            
+            # Draw native dimensions (this includes the panel shape)
+            self.draw_native_dimensions_into(display, include_cutouts, offset, True, units, show_units)
+            
+            display.FitAll()
+            start_display()
+            
+        except ImportError:
+            print("OCC Display not available for native dimension viewing")
+
+    def get_dimension_geometry(self, dimension_style: str = "standard") -> List[TopoDS_Shape]:
+        """Get dimension geometry as OCC shapes for external rendering."""
+        return self._create_panel_dimensions(dimension_style)
+
+    def _panel_plane_xy(self) -> gp_Pln:
+        """XY plane for 2D panel (Z-up)."""
+        return gp_Pln(gp_Ax3(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)))
+
+    def make_native_dimensions(self, include_cutouts: bool = True, offset: float = 20.0) -> List[PrsDim_LengthDimension]:
+        """Create native OCC dimensions using PrsDim_LengthDimension."""
+        plane = self._panel_plane_xy()
+        dims = []
+        
+        ox, oy = self.origin
+        w, h = self.width, self.height
+        
+        # Width dimension along top edge
+        pL = gp_Pnt(ox, oy + h, 0)
+        pR = gp_Pnt(ox + w, oy + h, 0)
+        dW = PrsDim_LengthDimension(pL, pR, plane)  # OCC measures value automatically
+        dW.SetTextPosition(gp_Pnt(ox + 0.5 * w, oy + h + 50.0, 0))  # Use 50.0 specifically for width
+        dims.append(dW)
+        
+        # Height dimension along right edge
+        pB = gp_Pnt(ox + w, oy, 0)
+        pT = gp_Pnt(ox + w, oy + h, 0)
+        dH = PrsDim_LengthDimension(pB, pT, plane)
+        dH.SetTextPosition(gp_Pnt(ox + w + 500.0, oy + 0.5 * h, 0))  # Use 500.0 specifically for height
+        dims.append(dH)
+        
+        # Optional: cutout dimensions from bounding boxes
+        if include_cutouts and self._inner_wires:
+            for wire in self._inner_wires:
+                bbox = Bnd_Box()
+                brepbndlib.Add(wire, bbox)
+                xmin, ymin, _, xmax, ymax, _ = bbox.Get()
+                cx = 0.5 * (xmin + xmax)
+                cy = 0.5 * (ymin + ymax)
+                
+                # Cutout width along top
+                dCW = PrsDim_LengthDimension(gp_Pnt(xmin, ymax, 0), gp_Pnt(xmax, ymax, 0), plane)
+                dCW.SetTextPosition(gp_Pnt(cx, ymax + 0.6 * offset, 0))
+                dims.append(dCW)
+                
+                # Cutout height along right
+                dCH = PrsDim_LengthDimension(gp_Pnt(xmax, ymin, 0), gp_Pnt(xmax, ymax, 0), plane)
+                dCH.SetTextPosition(gp_Pnt(xmax + 0.6 * offset, cy, 0))
+                dims.append(dCH)
+        
+        return dims
+
+    def setup_dimension_style_and_units(self, display, units: str = "mm", show_units: bool = True, text_px: float = 12.0):
+        """Set up global dimension units & style for the viewer."""
+        drawer = display.Context.DefaultDrawer()
+        # Tell OCC what your model/display units are
+        drawer.SetDimLengthModelUnits(units)
+        drawer.SetDimLengthDisplayUnits(units)
+        # Aspect toggles the units string and basic look
+        asp = Prs3d_DimensionAspect()
+        asp.MakeUnitsDisplayed(show_units)
+        asp.MakeText3d(False)  # Screen text (typical for viewers)
+        asp.TextAspect().SetHeight(text_px)
+        drawer.SetDimensionAspect(asp)
+
+    def draw_native_dimensions_into(self, display, include_cutouts: bool = True, offset: float = 20.0, 
+                                   show_panel_shape: bool = True, units: str = "mm", show_units: bool = True):
+        """Draw native dimensions into the display."""
+        # Set up dimension style and units
+        self.setup_dimension_style_and_units(display, units, show_units)
+        
+        # Display panel shape if requested
+        if show_panel_shape:
+            from OCC.Core.AIS import AIS_Shape
+            display.Context.Display(AIS_Shape(self.as_shape()), False)
+        
+        # Create and display native dimensions
+        dims = self.make_native_dimensions(include_cutouts, offset)
+        for dim in dims:
+            display.Context.Display(dim, False)
+
     def __str__(self) -> str:
         """String representation of the panel."""
         edge_count, inner_count = self.get_library_shapes_count()
@@ -607,3 +735,148 @@ class Panel2D:
             
         except Exception as e:
             raise RuntimeError(f"Error saving panel to BREP: {e}")
+
+    # ---------- dimension helpers ----------
+    def _create_panel_dimensions(self, dimension_style: str = "standard") -> List[TopoDS_Shape]:
+        """Create dimension geometry for the panel itself."""
+        dimension_shapes = []
+        
+        # Panel dimensions configuration - make text more visible
+        text_height = 25.0  # mm - increased for better visibility
+        line_gap = 10.0     # mm - increased gap
+        extension_length = 15.0  # mm - increased extension
+        
+        ox, oy = self.origin
+        w, h = self.width, self.height
+        
+        # Width dimension (horizontal)
+        print(f"Creating width dimension: {w}mm")
+        width_dims = self._create_linear_dimension(
+            start_point=gp_Pnt(ox, oy - line_gap - extension_length, 0),
+            end_point=gp_Pnt(ox + w, oy - line_gap - extension_length, 0),
+            dimension_value=w,
+            text_height=text_height,
+            is_horizontal=True
+        )
+        dimension_shapes.extend(width_dims)
+        
+        # Height dimension (vertical)
+        print(f"Creating height dimension: {h}mm")
+        height_dims = self._create_linear_dimension(
+            start_point=gp_Pnt(ox - line_gap - extension_length, oy, 0),
+            end_point=gp_Pnt(ox - line_gap - extension_length, oy + h, 0),
+            dimension_value=h,
+            text_height=text_height,
+            is_horizontal=False
+        )
+        dimension_shapes.extend(height_dims)
+        
+        print(f"Total dimension shapes created: {len(dimension_shapes)}")
+        return dimension_shapes
+
+    def _create_linear_dimension(
+        self, 
+        start_point: gp_Pnt, 
+        end_point: gp_Pnt, 
+        dimension_value: float,
+        text_height: float = 3.0,
+        is_horizontal: bool = True
+    ) -> List[TopoDS_Shape]:
+        """Create a linear dimension with dimension line, extension lines, and text."""
+        dimension_shapes = []
+        
+        # Create dimension line
+        dim_line = BRepBuilderAPI_MakeEdge(start_point, end_point).Edge()
+        dimension_shapes.append(dim_line)
+        
+        # Create extension lines - make them longer for better visibility
+        extension_length = 5.0  # mm
+        if is_horizontal:
+            # For horizontal dimension, extend vertically
+            ext1_start = gp_Pnt(start_point.X(), start_point.Y() - extension_length, 0)
+            ext1_end = gp_Pnt(start_point.X(), start_point.Y() + extension_length, 0)
+            ext2_start = gp_Pnt(end_point.X(), end_point.Y() - extension_length, 0)
+            ext2_end = gp_Pnt(end_point.X(), end_point.Y() + extension_length, 0)
+        else:
+            # For vertical dimension, extend horizontally
+            ext1_start = gp_Pnt(start_point.X() - extension_length, start_point.Y(), 0)
+            ext1_end = gp_Pnt(start_point.X() + extension_length, start_point.Y(), 0)
+            ext2_start = gp_Pnt(end_point.X() - extension_length, end_point.Y(), 0)
+            ext2_end = gp_Pnt(end_point.X() + extension_length, end_point.Y(), 0)
+        
+        ext1 = BRepBuilderAPI_MakeEdge(ext1_start, ext1_end).Edge()
+        ext2 = BRepBuilderAPI_MakeEdge(ext2_start, ext2_end).Edge()
+        dimension_shapes.extend([ext1, ext2])
+        
+        # Create dimension text (simplified as a small rectangle)
+        text_center_x = (start_point.X() + end_point.X()) / 2
+        text_center_y = (start_point.Y() + end_point.Y()) / 2
+        
+        # Offset text from dimension line - move to outside
+        text_offset = text_height * 2.5  # Increased offset to move further outside
+        if is_horizontal:
+            # For horizontal dimension (width), move text BELOW the dimension line (outside)
+            text_y = text_center_y - text_offset
+        else:
+            # For vertical dimension (height), move text to the LEFT of the dimension line (outside)
+            text_x = text_center_x - text_offset - text_height  # Extra offset for height
+        
+        # Create text background rectangle - make it more visible
+        text_width = len(f"{dimension_value:.0f}") * text_height * 1.2  # Increased width multiplier for wider rectangles
+        text_height_actual = text_height
+        
+        if is_horizontal:
+            text_x = text_center_x - text_width / 2
+            text_y = text_center_y - text_offset
+        else:
+            text_x = text_center_x - text_offset
+            text_y = text_center_y - text_height_actual / 2
+        
+        # Add more padding to make text rectangle more visible
+        padding = text_height * 0.6  # Increased padding for larger rectangles
+        text_x -= padding
+        text_y -= padding
+        text_width += 2 * padding
+        text_height_actual += 2 * padding
+        
+        text_wire = BRepBuilderAPI_MakePolygon()
+        text_wire.Add(gp_Pnt(text_x, text_y, 0))
+        text_wire.Add(gp_Pnt(text_x + text_width, text_y, 0))
+        text_wire.Add(gp_Pnt(text_x + text_width, text_y + text_height_actual, 0))
+        text_wire.Add(gp_Pnt(text_x, text_y + text_height_actual, 0))
+        text_wire.Close()
+        
+        text_face = BRepBuilderAPI_MakeFace(text_wire.Wire()).Face()
+        dimension_shapes.append(text_face)
+        
+        # Add actual text geometry (simplified as small rectangles for each character)
+        text_string = f"{dimension_value:.0f}"
+        char_width = text_width / len(text_string)
+        
+        for i, char in enumerate(text_string):
+            # Create a small rectangle for each character - make them more visible
+            char_x = text_x + padding + (i * char_width) + (char_width * 0.05)  # Add small gap between characters
+            char_y = text_y + padding
+            char_w = char_width * 0.8  # Slightly smaller for gaps
+            char_h = text_height_actual - 2 * padding
+            
+            # Create filled rectangle for each character
+            char_wire = BRepBuilderAPI_MakePolygon()
+            char_wire.Add(gp_Pnt(char_x, char_y, 0))
+            char_wire.Add(gp_Pnt(char_x + char_w, char_y, 0))
+            char_wire.Add(gp_Pnt(char_x + char_w, char_y + char_h, 0))
+            char_wire.Add(gp_Pnt(char_x, char_y + char_h, 0))
+            char_wire.Close()
+            
+            # Create a filled face for the character
+            char_face = BRepBuilderAPI_MakeFace(char_wire.Wire()).Face()
+            dimension_shapes.append(char_face)
+        
+        # Debug: print dimension info
+        print(f"Created dimension: {dimension_value:.0f}mm at ({text_x:.1f}, {text_y:.1f}), size {text_width:.1f}x{text_height_actual:.1f}")
+        print(f"  - Dimension line: {dimension_shapes[0]}")
+        print(f"  - Extension lines: {dimension_shapes[1:3]}")
+        print(f"  - Text background: {dimension_shapes[3]}")
+        print(f"  - Character rectangles: {len(dimension_shapes[4:])} shapes")
+        
+        return dimension_shapes
