@@ -264,7 +264,7 @@ def render_brep_view(request):
 
 @csrf_exempt
 def export_to_dxf(request):
-    """Export panel layout to DXF format."""
+    """Export panel layout to DXF format using the same working code path as CAD viewer."""
     if request.method != 'POST':
         return JsonResponse({'error': 'Only POST method allowed'}, status=405)
 
@@ -274,22 +274,36 @@ def export_to_dxf(request):
         panel_width = data.get('panel_width', 800)
         panel_height = data.get('panel_height', 1900)
 
-        # Create panel using Panel2D class (same as in render_brep_view)
+        # Create panel using Panel2D class (exact same as render_brep_view)
         panel = Panel2D(width=panel_width, height=panel_height)
         
-        # Add placed shapes to the panel
-        for shape_data in shapes_data:
+        # Debug logging (same as render_brep_view)
+        print(f"=== BACKEND DXF EXPORT DEBUG ===")
+        print(f"Panel dimensions: {panel_width} x {panel_height}")
+        print(f"Placed shapes count: {len(shapes_data)}")
+        print(f"Placed shapes data: {shapes_data}")
+        
+        # Add placed shapes to the panel (exact same logic as render_brep_view)
+        for i, shape_data in enumerate(shapes_data):
             try:
-                shape_id = shape_data.get('id')
+                shape_id = shape_data.get('shape_id') or shape_data.get('id')  # Support both 'shape_id' and 'id'
                 shape_type = shape_data.get('shape_type')
                 x = float(shape_data.get('x', 0))
                 y = float(shape_data.get('y', 0))
                 angle_deg = float(shape_data.get('angle_deg', 0))
                 
+                print(f"--- Processing shape {i+1} ---")
+                print(f"Shape ID: {shape_id}")
+                print(f"Shape type: {shape_type}")
+                print(f"Coordinates: x={x}, y={y}")
+                print(f"Angle: {angle_deg} degrees")
+                
                 # Get the shape from database
                 shape_asset = ShapeAsset.objects.get(id=shape_id)
+                print(f"Shape asset: {shape_asset.name}")
+                print(f"Shape asset type: {shape_asset.shape_type}")
                 
-                # Add shape to panel using the helper method
+                # Add shape to panel using the helper method (exact same as render_brep_view)
                 if shape_type == 'edge_affecting':
                     # For edge-affecting shapes, pass edge and position instead of tx/ty
                     edge = shape_data.get('edge')
@@ -298,13 +312,21 @@ def export_to_dxf(request):
                 else:
                     # For internal cutouts, use the original tx/ty approach
                     shape_asset.add_to_panel2d(panel, tx=x, ty=y, angle_deg=angle_deg, scale=1.0)
+                print(f"Shape {i+1} added successfully")
                 
             except Exception as e:
                 print(f"Error adding shape {shape_id}: {e}")
                 continue
 
-        # Generate DXF content using the same panel instance
-        dxf_content = export_panel_to_dxf(panel)
+        # Get the final panel shape with all cuts (exact same as render_brep_view)
+        try:
+            panel_shape = panel.as_shape()
+            print(f"Panel shape created successfully: {panel_shape}")
+        except Exception as e:
+            return JsonResponse({'error': f'Failed to create panel shape: {e}'}, status=500)
+
+        # Generate DXF content using the panel shape (same pattern as BREP export)
+        dxf_content = export_panel_to_dxf(panel_shape)
 
         # Return as downloadable file
         from django.http import HttpResponse
@@ -317,7 +339,7 @@ def export_to_dxf(request):
 
 @csrf_exempt
 def export_to_brep(request):
-    """Export panel layout to BREP format."""
+    """Export panel layout to BREP format using the same working code path as CAD viewer."""
     if request.method != 'POST':
         return JsonResponse({'error': 'Only POST method allowed'}, status=405)
 
@@ -327,22 +349,36 @@ def export_to_brep(request):
         panel_width = data.get('panel_width', 800)
         panel_height = data.get('panel_height', 1900)
 
-        # Create panel using Panel2D class (same as in render_brep_view)
+        # Create panel using Panel2D class (exact same as render_brep_view)
         panel = Panel2D(width=panel_width, height=panel_height)
         
-        # Add placed shapes to the panel
-        for shape_data in shapes_data:
+        # Debug logging (same as render_brep_view)
+        print(f"=== BACKEND BREP EXPORT DEBUG ===")
+        print(f"Panel dimensions: {panel_width} x {panel_height}")
+        print(f"Placed shapes count: {len(shapes_data)}")
+        print(f"Placed shapes data: {shapes_data}")
+        
+        # Add placed shapes to the panel (exact same logic as render_brep_view)
+        for i, shape_data in enumerate(shapes_data):
             try:
-                shape_id = shape_data.get('id')
+                shape_id = shape_data.get('shape_id') or shape_data.get('id')  # Support both 'shape_id' and 'id'
                 shape_type = shape_data.get('shape_type')
                 x = float(shape_data.get('x', 0))
                 y = float(shape_data.get('y', 0))
                 angle_deg = float(shape_data.get('angle_deg', 0))
                 
+                print(f"--- Processing shape {i+1} ---")
+                print(f"Shape ID: {shape_id}")
+                print(f"Shape type: {shape_type}")
+                print(f"Coordinates: x={x}, y={y}")
+                print(f"Angle: {angle_deg} degrees")
+                
                 # Get the shape from database
                 shape_asset = ShapeAsset.objects.get(id=shape_id)
+                print(f"Shape asset: {shape_asset.name}")
+                print(f"Shape asset type: {shape_asset.shape_type}")
                 
-                # Add shape to panel using the helper method
+                # Add shape to panel using the helper method (exact same as render_brep_view)
                 if shape_type == 'edge_affecting':
                     # For edge-affecting shapes, pass edge and position instead of tx/ty
                     edge = shape_data.get('edge')
@@ -351,10 +387,18 @@ def export_to_brep(request):
                 else:
                     # For internal cutouts, use the original tx/ty approach
                     shape_asset.add_to_panel2d(panel, tx=x, ty=y, angle_deg=angle_deg, scale=1.0)
+                print(f"Shape {i+1} added successfully")
                 
             except Exception as e:
                 print(f"Error adding shape {shape_id}: {e}")
                 continue
+
+        # Get the final panel shape with all cuts (exact same as render_brep_view)
+        try:
+            panel_shape = panel.as_shape()
+            print(f"Panel shape created successfully: {panel_shape}")
+        except Exception as e:
+            return JsonResponse({'error': f'Failed to create panel shape: {e}'}, status=500)
 
         # Generate unique filename
         import uuid
@@ -367,8 +411,18 @@ def export_to_brep(request):
         # Ensure exports directory exists
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         
-        # Save BREP file using Panel2D's save_brep method
-        panel.save_brep(file_path)
+        # Write BREP file using the same function that works in shapes/services.py
+        try:
+            from OCC.Core import BRepTools
+            
+            print(f"Writing BREP file to: {file_path}")
+            if not BRepTools.breptools_Write(panel_shape, str(file_path)):
+                raise RuntimeError(f"Failed to write BREP file: {file_path}")
+            
+            print(f"BREP file written successfully: {filename}")
+            
+        except Exception as e:
+            return JsonResponse({'error': f'Failed to write BREP file: {e}'}, status=500)
 
         # Return success response with file info
         return JsonResponse({
@@ -399,7 +453,7 @@ def export_to_pdf(request):
         # Add placed shapes to the panel
         for shape_data in shapes_data:
             try:
-                shape_id = shape_data.get('id')
+                shape_id = shape_data.get('shape_id') or shape_data.get('id')  # Support both 'shape_id' and 'id'
                 shape_type = shape_data.get('shape_type')
                 x = float(shape_data.get('x', 0))
                 y = float(shape_data.get('y', 0))

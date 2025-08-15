@@ -903,13 +903,78 @@ def process_shape_asset(shape_asset: ShapeAsset) -> None:
         raise RuntimeError(f"Failed to process shape: {e}")
 
 
-def export_panel_to_dxf(panel: 'Panel2D') -> str:
-    """Export panel layout to DXF format using existing Panel2D instance.
+def export_panel_to_dxf(panel_shape) -> str:
+    """Export panel layout to DXF format using BREP as intermediate format.
+    
+    This approach uses the proven BREP export as the foundation and converts
+    the BREP file to DXF format for maximum reliability and accuracy.
     
     Parameters
     ----------
-    panel: Panel2D
-        The panel instance with all shapes already added
+    panel_shape: TopoDS_Shape
+        The final panel shape with all cuts and holes already applied
+        
+    Returns
+    -------
+    str
+        DXF file content as string
+    """
+    try:
+        import tempfile
+        import os
+        import ezdxf
+        from io import StringIO
+        
+        # Step 1: Create a temporary BREP file using the working BREP export method
+        print("Creating temporary BREP file for DXF conversion...")
+        temp_brep_file = tempfile.NamedTemporaryFile(suffix='.brep', delete=False)
+        temp_brep_path = temp_brep_file.name
+        temp_brep_file.close()
+        
+        try:
+            # Write the panel shape to BREP format using the same method as Panel2D.save_brep()
+            from OCC.Core.BRepTools import breptools_Write
+            print(f"Writing panel shape to BREP: {temp_brep_path}")
+            if not breptools_Write(panel_shape, temp_brep_path):
+                raise RuntimeError(f"Failed to write temporary BREP file: {temp_brep_path}")
+            
+            # Verify the BREP file was created and has content
+            if not os.path.exists(temp_brep_path):
+                raise RuntimeError("Temporary BREP file was not created")
+            
+            file_size = os.path.getsize(temp_brep_path)
+            if file_size == 0:
+                raise RuntimeError("Temporary BREP file is empty")
+            
+            print(f"Temporary BREP file created successfully: {file_size} bytes")
+            
+            # Step 2: Convert BREP to DXF using OCC's built-in conversion
+            print("Converting BREP to DXF...")
+            dxf_content = _convert_brep_to_dxf(temp_brep_path)
+            
+            print(f"DXF conversion completed successfully: {len(dxf_content)} characters")
+            return dxf_content
+            
+        finally:
+            # Clean up temporary file
+            if os.path.exists(temp_brep_path):
+                try:
+                    os.remove(temp_brep_path)
+                    print("Temporary BREP file cleaned up")
+                except Exception as e:
+                    print(f"Warning: Could not clean up temporary file: {e}")
+        
+    except Exception as e:
+        raise RuntimeError(f"Error in BREP to DXF conversion: {e}")
+
+
+def _convert_brep_to_dxf(brep_file_path: str) -> str:
+    """Convert a BREP file to DXF format using OCC geometry extraction.
+    
+    Parameters
+    ----------
+    brep_file_path: str
+        Path to the BREP file to convert
         
     Returns
     -------
@@ -918,71 +983,139 @@ def export_panel_to_dxf(panel: 'Panel2D') -> str:
     """
     try:
         import ezdxf
+        from io import StringIO
+        from OCC.Core import BRepTools
+        from OCC.Core.TopoDS import TopoDS_Shape, TopoDS_Face
+        from OCC.Core.BRep import BRep_Builder
+        from OCC.Core.TopExp import TopExp_Explorer
+        from OCC.Core.TopAbs import TopAbs_WIRE, TopAbs_EDGE, TopAbs_FACE
+        from OCC.Core.BRepAdaptor import BRepAdaptor_Curve
+        from OCC.Core.GeomAbs import GeomAbs_Line, GeomAbs_Circle
+        from OCC.Core.gp import gp_Pnt
         import math
         
-        # Create a new DXF document
+        # Load the BREP file using the same method as load_brep_file()
+        print(f"Loading BREP file: {brep_file_path}")
+        shape = TopoDS_Shape()
+        builder = BRep_Builder()
+        
+        if not BRepTools.breptools_Read(shape, brep_file_path, builder):
+            raise RuntimeError(f"Failed to read BREP file: {brep_file_path}")
+        
+        if shape.IsNull():
+            raise RuntimeError("No shape found in BREP file")
+        
+        print(f"BREP file loaded successfully, shape type: {type(shape)}")
+        
+        # Create DXF document
         doc = ezdxf.new('R2010')  # AutoCAD 2010 format
         msp = doc.modelspace()
         
-        # Get the final panel shape with all cuts
-        panel_shape = panel.as_shape()
+        # Extract all faces from the shape (in case it's a compound)
+        face_explorer = TopExp_Explorer(shape, TopAbs_FACE)
+        face_count = 0
         
-        # Convert the panel shape to DXF
-        from OCC.Core.TopExp import TopExp_Explorer
-        from OCC.Core.TopAbs import TopAbs_WIRE, TopAbs_EDGE
-        from OCC.Core.BRepAdaptor import BRepAdaptor_Curve
-        from OCC.Core.GeomAbs import GeomAbs_Line, GeomAbs_Circle
-        
-        # Extract all wires from the panel shape
-        wire_explorer = TopExp_Explorer(panel_shape, TopAbs_WIRE)
-        
-        while wire_explorer.More():
-            wire = wire_explorer.Current()
+        while face_explorer.More():
+            face = face_explorer.Current()
+            face_count += 1
+            print(f"Processing face {face_count}")
             
-            # Extract edges from the wire
-            edge_explorer = TopExp_Explorer(wire, TopAbs_EDGE)
+            # Extract all wires from this face
+            wire_explorer = TopExp_Explorer(face, TopAbs_WIRE)
+            wire_count = 0
             
-            points = []
-            while edge_explorer.More():
-                edge = edge_explorer.Current()
+            while wire_explorer.More():
+                wire = wire_explorer.Current()
+                wire_count += 1
+                print(f"  Processing wire {wire_count}")
                 
-                # Use BRepAdaptor_Curve to get points from the edge
-                try:
-                    curve_adaptor = BRepAdaptor_Curve(edge)
-                    
-                    # Get start and end points
-                    start_point = curve_adaptor.Value(curve_adaptor.FirstParameter())
-                    end_point = curve_adaptor.Value(curve_adaptor.LastParameter())
-                    
-                    points.append((start_point.X(), start_point.Y()))
-                    points.append((end_point.X(), end_point.Y()))
-                    
-                except Exception as e:
-                    print(f"Warning: Could not process edge: {e}")
-                    continue
+                # Extract edges from the wire
+                edge_explorer = TopExp_Explorer(wire, TopAbs_EDGE)
+                edge_points = []
                 
-                edge_explorer.Next()
-            
-            if points:
-                # Remove duplicate consecutive points
-                unique_points = []
-                for i, point in enumerate(points):
-                    if i == 0 or point != points[i-1]:
-                        unique_points.append(point)
+                while edge_explorer.More():
+                    edge = edge_explorer.Current()
+                    
+                    try:
+                        curve_adaptor = BRepAdaptor_Curve(edge)
+                        curve_type = curve_adaptor.GetType()
+                        
+                        if curve_type == GeomAbs_Line:
+                            # Line segment - get start and end points
+                            start_point = curve_adaptor.Value(curve_adaptor.FirstParameter())
+                            end_point = curve_adaptor.Value(curve_adaptor.LastParameter())
+                            
+                            edge_points.append((start_point.X(), start_point.Y()))
+                            edge_points.append((end_point.X(), end_point.Y()))
+                            
+                        elif curve_type == GeomAbs_Circle:
+                            # Circle/Arc - sample points along the curve
+                            circle = curve_adaptor.Circle()
+                            center = circle.Location()
+                            radius = circle.Radius()
+                            
+                            # Sample points along the arc
+                            start_param = curve_adaptor.FirstParameter()
+                            end_param = curve_adaptor.LastParameter()
+                            num_samples = max(8, int(abs(end_param - start_param) * radius / 10))  # Adaptive sampling
+                            
+                            for i in range(num_samples + 1):
+                                param = start_param + (end_param - start_param) * i / num_samples
+                                point = curve_adaptor.Value(param)
+                                edge_points.append((point.X(), point.Y()))
+                        
+                        else:
+                            # Other curve types - sample points
+                            start_param = curve_adaptor.FirstParameter()
+                            end_param = curve_adaptor.LastParameter()
+                            num_samples = 10
+                            
+                            for i in range(num_samples + 1):
+                                param = start_param + (end_param - start_param) * i / num_samples
+                                point = curve_adaptor.Value(param)
+                                edge_points.append((point.X(), point.Y()))
+                        
+                    except Exception as e:
+                        print(f"    Warning: Could not process edge: {e}")
+                        continue
+                    
+                    edge_explorer.Next()
                 
-                if len(unique_points) > 1:
-                    msp.add_lwpolyline(unique_points)
+                # Create DXF polyline from the points
+                if len(edge_points) > 1:
+                    # Remove duplicate consecutive points
+                    unique_points = []
+                    for i, point in enumerate(edge_points):
+                        if i == 0 or point != edge_points[i-1]:
+                            unique_points.append(point)
+                    
+                    # Ensure the polyline is closed if it should be
+                    if len(unique_points) > 2 and unique_points[0] == unique_points[-1]:
+                        unique_points = unique_points[:-1]  # Remove duplicate end point
+                    
+                    if len(unique_points) > 1:
+                        try:
+                            # Create polyline with proper closure
+                            polyline = msp.add_lwpolyline(unique_points)
+                            if len(unique_points) > 2 and unique_points[0] == unique_points[-1]:
+                                polyline.closed = True
+                            print(f"    Created polyline with {len(unique_points)} points")
+                        except Exception as e:
+                            print(f"    Warning: Could not create polyline: {e}")
+                
+                wire_explorer.Next()
             
-            wire_explorer.Next()
+            face_explorer.Next()
         
-        # Export to string - use the correct method for newer ezdxf versions
-        from io import StringIO
+        print(f"DXF conversion completed: {face_count} faces, {wire_count} wires processed")
+        
+        # Export to string
         stream = StringIO()
         doc.write(stream)
         return stream.getvalue()
         
     except Exception as e:
-        raise RuntimeError(f"Error exporting to DXF: {e}")
+        raise RuntimeError(f"Error converting BREP to DXF: {e}")
 
 
 def export_panel_to_brep(panel: 'Panel2D', path: str) -> None:
